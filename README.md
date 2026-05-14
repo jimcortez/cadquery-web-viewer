@@ -1,41 +1,43 @@
-# Yet Another CAD Viewer
+# glb-preview-server
 
-A CAD viewer capable of displaying [OCP](https://github.com/CadQuery/OCP)
-models ([CadQuery](https://github.com/CadQuery/cadquery)/[Build123d](https://github.com/gumyr/build123d)/...)
-in a web browser.
+**glb-preview-server** is a hard fork of [**Yet Another CAD Viewer**](https://github.com/yeicor-3d/yet-another-cad-viewer) (YACV): a web-based CAD and GLB viewer with a Python (`glb_preview_server`) backend for live tessellation, hot reload, and static export. This repository continues the same MIT-licensed codebase under a new name and package layout while crediting the original project and its authors.
+
+Upstream reference: [yeicor-3d/yet-another-cad-viewer](https://github.com/yeicor-3d/yet-another-cad-viewer) — use that project’s issue tracker and releases if you need the original branding or PyPI package `yacv-server`.
 
 ## Features
 
 - Cross-platform: works on any modern web browser.
-- All [GLTF 2.0](https://www.khronos.org/gltf/) features (textures, PBR materials, animations...).
-- All [model-viewer](https://modelviewer.dev/) features (smooth controls, augmented reality...).
-- Load multiple models at once, load external models and even images as quads.
-- Control clipping planes, transparency, edge/vertex sizes and explode each model.
-- View and interact with topological entities: faces, edges, vertices and locations.
-- Select any entity and measure bounding box size and distances.
-- Hot reloading while editing the CAD model (using the `yacv-server` package).
-- Fully-featured static deployment: just upload the viewer and models to your server.
-- Build123d playground! Code and build your model fully inside the
-  browser: [demo](https://yeicor-3d.github.io/yet-another-cad-viewer/#pg_code=https://raw.githubusercontent.com/gumyr/build123d/refs/heads/dev/examples/toy_truck.py).
+- Full [glTF 2.0](https://www.khronos.org/gltf/) and [model-viewer](https://modelviewer.dev/) capabilities (textures, PBR, AR, navigation).
+- Load multiple models, external URLs, and images as quads; clipping, transparency, edge/vertex styling, explode, topology picking, measurements.
+- Live updates while editing CAD in Python via the `glb-preview-server` CLI (`glb-preview-server` command) and the `glb_preview_server` import package.
+- Optional disk cache for uploaded GLBs, static deployment of the built UI plus `.glb` files, and a Build123d playground (full build) backed by Pyodide.
+
+## Install
+
+```bash
+pip install glb-preview-server
+```
+
+Run the viewer and API (default `http://localhost:32323`):
+
+```bash
+glb-preview-server
+```
+
+Environment variables use the `GLB_PREVIEW_*` prefix (for example `GLB_PREVIEW_HOST`, `GLB_PREVIEW_PORT`, `GLB_PREVIEW_DISABLE_SERVER`). See the [example](example) project and package CLI help for details.
 
 ## Usage
 
-The [example](example) is a fully working project that shows how to use the viewer.
+The [example](example) directory is a minimal project that calls `show()` / `export_all()` against a running server.
 
-You can play with the latest
-demo [here](https://yeicor-3d.github.io/yet-another-cad-viewer/?preload=logo.glb&preload=logo_hl.glb&preload=logo_hl_tex.glb&preload=fox.glb&preload=img.glb&preload=location.glb)
-(or
-[without animation](https://yeicor-3d.github.io/yet-another-cad-viewer/?autoplay=false&preload=logo.glb&preload=logo_hl.glb&preload=logo_hl_tex.glb&preload=fox.glb&preload=img.glb&preload=location.glb)).
-
-![Demo](assets/screenshot.png)
+The original project’s public demos remain on GitHub Pages under the YACV name, for example the [interactive playground demo](https://yeicor-3d.github.io/yet-another-cad-viewer/#pg_code=https://raw.githubusercontent.com/gumyr/build123d/refs/heads/dev/examples/toy_truck.py). After you publish this fork’s frontend, use the same query parameters with your own base URL (for example `?preload=…` for static GLBs).
 
 ## Related projects
 
-- [cq-studio](https://github.com/ccazabon/cq-studio) provides an alternative workflow that detects file changes instead
-  of relying on an interactive environment like Jupyter for hot-reloading.
-  Uses the same backend and frontend behind the scenes.
-- [build123d-docker](https://github.com/derhuerst/build123d-docker/pkgs/container/build123d) provides docker images for
-  Yet Another CAD Viewer and other projects, with automatic updates.
-- [OCP.wasm](https://github.com/yeicor/OCP.wasm/) ports OCP (OpenCASCADE for Python) and supporting libraries to
-  WebAssembly, enabling full in-browser CAD model generation and manipulation. This powers the build123d playground
-  provided by this viewer.
+- [cq-studio](https://github.com/ccazabon/cq-studio) — alternative file-watch workflow; historically related to the same viewer stack.
+- [build123d-docker](https://github.com/derhuerst/build123d-docker/pkgs/container/build123d) — containers for CAD tooling.
+- [OCP.wasm](https://github.com/yeicor/OCP.wasm/) — OpenCASCADE in the browser; powers the in-browser Build123d playground.
+
+## License
+
+This project is released under the [MIT License](LICENSE), consistent with the upstream Yet Another CAD Viewer distribution. Third-party notices are collected under [assets/licenses.txt](assets/licenses.txt) as in the original project.

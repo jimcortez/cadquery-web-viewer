@@ -84,7 +84,7 @@ async function setupPyodide(first: boolean, loadSnapshot: Uint8Array | undefined
     output("Reusing existing Pyodide instance...\n");
   }
   output("Preloading packages...\n");
-  await pyodideWorker.asyncRun(playgroundStartupCode, output, output); // Also import yacv_server and mock ocp_vscode here for faster custom code execution
+  await pyodideWorker.asyncRun(playgroundStartupCode, output, output); // Preload glb_preview_server and mock ocp_vscode
   running.value = false; // Indicate that Pyodide is ready
   output("Pyodide worker ready.\n");
 }
@@ -103,8 +103,8 @@ async function runCode() {
     running.value = true;
     await pyodideWorker.asyncRun(model.value.code, output, (msg: string) => {
       // Detect models printed to console (since http server is not available in pyodide)
-      if (msg.startsWith(yacvServerModelPrefix)) {
-        const modelData = msg.slice(yacvServerModelPrefix.length);
+      if (msg.startsWith(glbPreviewServerModelPrefix)) {
+        const modelData = msg.slice(glbPreviewServerModelPrefix.length);
         onModelData(modelData);
       } else {
         output(msg); // Print other messages directly
@@ -118,7 +118,7 @@ async function runCode() {
   }
 }
 
-const yacvServerModelPrefix = "yacv_server://model/";
+const glbPreviewServerModelPrefix = "glb_preview_server://model/";
 
 function onModelData(modelData: string) {
   output(`Model data detected... ${modelData.length}B\n`);

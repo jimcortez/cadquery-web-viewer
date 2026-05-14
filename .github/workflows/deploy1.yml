@@ -38,8 +38,8 @@ jobs:
       # Commit the changes and move the tag!
       - if: "steps.check_recursive.outputs.skip != 'true'"
         run: |
-          git config --global user.email "yeicor@users.noreply.github.com"
-          git config --global user.name "Yeicor"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
           if git commit -am "Automatically update version to $CLEAN_VERSION"; then
             git push
             # Move the tag to the new commit

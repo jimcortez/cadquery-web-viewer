@@ -11,7 +11,7 @@ import { viteStaticCopy } from "vite-plugin-static-copy";
 import { dirname, join } from "path";
 import { version as pyodideVersion } from "pyodide";
 
-let wantsSmallBuild = process.env.YACV_SMALL_BUILD == "true";
+let wantsSmallBuild = process.env.GLB_PREVIEW_SMALL_BUILD == "true";
 
 // Helper to safely get git info
 function getGitInfo(command: string, fallback: string): string {
@@ -70,7 +70,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(version),
     __APP_GIT_SHA__: JSON.stringify(getGitInfo("git rev-parse HEAD", "unknown")),
     __APP_GIT_DIRTY__: JSON.stringify(getGitInfo("git diff --quiet || echo dirty", "")),
-    __YACV_SMALL_BUILD__: JSON.stringify(wantsSmallBuild),
+    __GLB_PREVIEW_SMALL_BUILD__: JSON.stringify(wantsSmallBuild),
   },
 });
 

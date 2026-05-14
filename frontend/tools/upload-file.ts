@@ -26,7 +26,7 @@ export async function uploadFile(name: string, data: Uint8Array): Promise<string
     // "Free" storage, let's see how long it lasts...
     // Create a locker
     const lockerUrl = `https://vouz-backend.onrender.com/api/locker`
-    const lockerName = `yacv-pg-${name}-${Date.now()}`; // Unique locker name
+    const lockerName = `glb-preview-pg-${name}-${Date.now()}`; // Unique locker name
     let responsePromise = fetch(lockerUrl, {
         method: 'POST',
         headers: {

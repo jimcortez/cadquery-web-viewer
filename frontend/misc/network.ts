@@ -44,8 +44,11 @@ export class NetworkManager extends EventTarget {
      */
     async load(url: string | Blob) {
         if (!(url instanceof Blob) && (url.startsWith("dev+") || url.startsWith("dev "))) {
-            let baseUrl = new URL(url.slice(4));
-            baseUrl.searchParams.set("api_updates", "true");
+            let baseUrl = new URL(url.slice(4).trim());
+            if (!baseUrl.pathname.endsWith("/api/updates")) {
+                baseUrl.pathname = baseUrl.pathname.replace(/\/?$/, "") + "/api/updates";
+                baseUrl.search = "";
+            }
             await this.monitorDevServer(baseUrl);
         } else {
             let name;
@@ -93,10 +96,8 @@ export class NetworkManager extends EventTarget {
                         if (!line || !line.startsWith("data:")) continue;
                         let data: { name: string, hash: string, is_remove: boolean | null } = JSON.parse(line.slice(5));
                         // console.debug("WebSocket message", data);
-                        let urlObj = new URL(url);
-                        urlObj.searchParams.delete("api_updates");
-                        urlObj.searchParams.set("api_object", data.name);
-                        this.foundModel(data.name, data.hash, urlObj.toString(), data.is_remove, async () => {
+                        let objectUrl = new URL("/api/object/" + encodeURIComponent(data.name), url.origin);
+                        this.foundModel(data.name, data.hash, objectUrl.toString(), data.is_remove, async () => {
                             controller.abort(); // Notify the server that we are done
                         });
                     }

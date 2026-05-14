@@ -132,7 +132,7 @@ async function downloadSceneGlb() {
 }
 
 async function openGithub() {
-  window.open('https://github.com/yeicor-3d/yet-another-cad-viewer', '_blank')
+  window.open('https://github.com/jecortez/glb-preview-server', '_blank')
 }
 
 function removeObjectSelections(objName: string) {

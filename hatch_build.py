@@ -11,15 +11,15 @@ class CustomBuildHook(BuildHookInterface):
     def initialize(self, version, build_data):
         """Initialize the build hook and build the frontend if needed."""
         # Check if frontend build is disabled
-        if os.environ.get("YACV_SKIP_FRONTEND_BUILD") == "true":
+        if os.environ.get("GLB_PREVIEW_SKIP_FRONTEND_BUILD") == "true":
             self.app.display_info(
-                "Frontend build disabled via YACV_SKIP_FRONTEND_BUILD"
+                "Frontend build disabled via GLB_PREVIEW_SKIP_FRONTEND_BUILD"
             )
             return
 
         # Get the project root directory
         project_root = Path(self.root)
-        frontend_dir = project_root / "yacv_server" / "frontend"
+        frontend_dir = project_root / "glb_preview_server" / "frontend"
 
         # Check if frontend is already built
         if frontend_dir.exists() and any(frontend_dir.glob("**/*.js")):
@@ -51,7 +51,7 @@ class CustomBuildHook(BuildHookInterface):
             # Build frontend
             self.app.display_info("Building frontend with Vite...")
             env = os.environ.copy()
-            env["YACV_SMALL_BUILD"] = "true"
+            env["GLB_PREVIEW_SMALL_BUILD"] = "true"
             subprocess.run(
                 ["npx", "-y", "yarn", "build", "--outDir", str(frontend_dir)],
                 cwd=str(project_root),
@@ -84,7 +84,7 @@ class CustomBuildHook(BuildHookInterface):
 
         # Add the entire frontend directory
         frontend_dir_str = str(frontend_dir)
-        build_data["force_include"][frontend_dir_str] = "yacv_server/frontend"
+        build_data["force_include"][frontend_dir_str] = "glb_preview_server/frontend"
 
         self.app.display_info(
             f"Added frontend directory to build data: {frontend_dir_str}"

@@ -1,18 +1,14 @@
-import atexit
 import base64
 import copy
 import inspect
 import os
-import signal
 import sys
 import threading
 import time
 from dataclasses import dataclass
 from enum import Enum, auto
-from http.server import ThreadingHTTPServer
 from io import BytesIO
-from threading import Thread
-from typing import Optional, Dict, Union, Callable, List, Tuple
+from typing import Optional, Dict, Union, Callable, List, Tuple, Any
 
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS_Shape
@@ -21,14 +17,13 @@ from PIL import Image
 from build123d import Shape, Axis, Location, Vector
 from dataclasses_json import dataclass_json
 
-from yacv_server.cad import _hashcode, get_color, ColorTuple
-from yacv_server.cad import get_shape, grab_all_cad, CADCoreLike, CADLike
-from yacv_server.gltf import get_version
-from yacv_server.myhttp import HTTPHandler
-from yacv_server.mylogger import logger
-from yacv_server.pubsub import BufferedPubSub
-from yacv_server.rwlock import RWLock
-from yacv_server.tessellate import tessellate
+from glb_preview_server.cad import _hashcode, get_color, ColorTuple
+from glb_preview_server.cad import get_shape, grab_all_cad, CADCoreLike, CADLike
+from glb_preview_server.gltf import get_version
+from glb_preview_server.mylogger import logger
+from glb_preview_server.pubsub import BufferedPubSub
+from glb_preview_server.rwlock import RWLock
+from glb_preview_server.tessellate import tessellate
 
 
 @dataclass_json
@@ -43,16 +38,16 @@ class UpdatesApiData:
     """Whether to remove the object from the scene. If None, this is a shutdown request"""
 
 
-YACVSupported = Union[bytes, CADCoreLike]
+GlbPreviewObject = Union[bytes, CADCoreLike]
 
 
 class UpdatesApiFullData(UpdatesApiData):
-    obj: YACVSupported
+    obj: GlbPreviewObject
     """The OCCT object (not serialized)"""
     kwargs: Optional[Dict[str, any]]
     """The show_object options, if any (not serialized)"""
 
-    def __init__(self, obj: YACVSupported, name: str, _hash: str, is_remove: Optional[bool] = False,
+    def __init__(self, obj: GlbPreviewObject, name: str, _hash: str, is_remove: Optional[bool] = False,
                  kwargs: Optional[Dict[str, any]] = None):
         self.name = name
         self.hash = _hash
@@ -65,7 +60,7 @@ class UpdatesApiFullData(UpdatesApiData):
         return super().to_json()
 
 
-class YACVProtocol(Enum):
+class GlbPreviewProtocol(Enum):
     """Enum of communication protocols supported by the server"""
     HTTP = auto()
     """The recommended protocol for any platform that can run a web server."""
@@ -73,16 +68,15 @@ class YACVProtocol(Enum):
     """Prints the updates one by one to stderr (first metadata, then base64 of glb file) using a special prefix. Required for Pyodide support."""
 
 
-class YACV:
-    """The main yacv_server class, which manages the web server and the CAD objects."""
+class GlbPreview:
+    """Core preview engine: manages CAD/GLB objects and update streams for the viewer."""
 
     # Startup
-    protocol: YACVProtocol
+    protocol: GlbPreviewProtocol
     """The protocol used by the server. Defaults to HTTP, but can be set to STDERR for Pyodide support."""
-    server_thread: Optional[Thread]
-    """The main thread running the server (will spawn other threads for each request)"""
-    server: Optional[ThreadingHTTPServer]
-    """The server object"""
+    server_thread: Optional[Any]
+    """Reserved; embedded HTTP server is no longer started from ``GlbPreview``."""
+    server: Optional[Any]
     startup_complete: threading.Event
     """Event to signal when the server has started"""
 
@@ -106,7 +100,7 @@ class YACV:
     """Default texture to use for model faces, in (data, mimetype) format.
     If left as None, no texture will be used.
     
-    It can be set with the YACV_TEXTURE=<uri> and overridden by the custom `yacv_texture` attribute of an object.
+    It can be set with the GLB_PREVIEW_TEXTURE=<uri> and overridden by the custom `glb_preview_texture` attribute of an object.
     The <uri> can be file:<path> or data:<mime>;base64,<data> where <mime> is the mime type and 
     <data> is the base64 encoded image."""
 
@@ -116,7 +110,7 @@ class YACV:
     You can use `show(..., color_faces=...)` or the standard way of setting colors for build123d/cadquery objects to 
     override this color.
     
-    It can be set with the YACV_COLOR_FACES=<color> environment variable, where <color> is a color
+    It can be set with the GLB_PREVIEW_COLOR_FACES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
     color_edges: Optional[ColorTuple]
@@ -125,7 +119,7 @@ class YACV:
     You can use `show(..., color_edges=...) or the standard way of setting colors for build123d/cadquery objects to
     override this color.
         
-    It can be set with the YACV_COLOR_EDGES=<color> environment variable, where <color> is a color
+    It can be set with the GLB_PREVIEW_COLOR_EDGES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
     color_vertices: Optional[ColorTuple]
@@ -134,13 +128,13 @@ class YACV:
     You can use `show(..., color_vertices=...)` or the standard way of setting colors for build123d/cadquery objects to
     override this color.
     
-    It can be set with the YACV_COLOR_VERTICES=<color> environment variable, where <color> is a color
+    It can be set with the GLB_PREVIEW_COLOR_VERTICES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
     def __init__(self):
-        """Initializes the YACV server"""
-        raw_protocol = os.getenv('YACV_PROTOCOL', 'http' if sys.platform != 'emscripten' else 'stderr').upper()
-        self.protocol = YACVProtocol[raw_protocol] if raw_protocol in YACVProtocol.__members__ else YACVProtocol.HTTP
+        """Initializes the glb-preview-server engine."""
+        raw_protocol = os.getenv('GLB_PREVIEW_PROTOCOL', 'http' if sys.platform != 'emscripten' else 'stderr').upper()
+        self.protocol = GlbPreviewProtocol[raw_protocol] if raw_protocol in GlbPreviewProtocol.__members__ else GlbPreviewProtocol.HTTP
         self.server_thread = None
         self.server = None
         self.startup_complete = threading.Event()
@@ -150,87 +144,38 @@ class YACV:
         self.at_least_one_client = threading.Event()
         self.shutting_down = threading.Event()
         self.frontend_lock = RWLock()
-        self.texture = _read_texture_uri(os.getenv("YACV_TEXTURE"))
-        self.color_faces = _read_color(os.getenv("YACV_COLOR_FACES", "#ffbf00"))  # Default yellow
-        self.color_edges = _read_color(os.getenv("YACV_COLOR_EDGES", "#1a1aff"))  # Default blue
-        self.color_vertices = _read_color(os.getenv("YACV_COLOR_VERTICES", "#1a1a1a"))  # Default dark gray
-        logger.info('Using yacv-server v%s', get_version())
+        self.texture = _read_texture_uri(os.getenv("GLB_PREVIEW_TEXTURE"))
+        self.color_faces = _read_color(os.getenv("GLB_PREVIEW_COLOR_FACES", "#ffbf00"))  # Default yellow
+        self.color_edges = _read_color(os.getenv("GLB_PREVIEW_COLOR_EDGES", "#1a1aff"))  # Default blue
+        self.color_vertices = _read_color(os.getenv("GLB_PREVIEW_COLOR_VERTICES", "#1a1a1a"))  # Default dark gray
+        logger.info('Using glb-preview-server v%s', get_version())
 
     def start(self):
-        """Starts the web server in the background"""
-        if self.protocol == YACVProtocol.STDERR: return  # No server to start, just print to stderr
-        assert self.server_thread is None, "Server currently running, cannot start another one"
-        assert self.startup_complete.is_set() is False, "Server already started"
-        # Start the server in a separate daemon thread
-        self.server_thread = Thread(target=self._run_server, name='yacv_server', daemon=True)
-        signal.signal(signal.SIGINT | signal.SIGTERM, self.stop)
-        atexit.register(self.stop)
-        self.server_thread.start()
-        logger.info('Server started (requested)...')
-        # Wait for the server to be ready before returning
-        while not self.startup_complete.wait():
-            time.sleep(0.01)
-        logger.info('Server started (received)...')
+        """Legacy hook: the HTTP viewer is served by the ``glb-preview-server`` Flask CLI, not this method."""
+        if self.protocol == GlbPreviewProtocol.STDERR:
+            return
+        logger.warning(
+            'GlbPreview.start() no longer starts an embedded HTTP server. Run `glb-preview-server` and use remote '
+            '`show()`, or set GLB_PREVIEW_DISABLE_SERVER=1 for local in-process show/export.'
+        )
+        self.startup_complete.set()
 
     # noinspection PyUnusedLocal
     def stop(self, *args):
-        """Stops the web server"""
-        if self.protocol == YACVProtocol.STDERR: return  # No server to stop, just print to stderr
-        # The remainder is for the HTTP protocol only
+        """Legacy hook; embedded ``ThreadingHTTPServer`` is no longer used."""
+        if self.protocol == GlbPreviewProtocol.STDERR:
+            return
         if self.server_thread is None:
-            logger.error('Cannot stop server because it is not running')
             return
 
-        # Inform the server that we are shutting down
-        self.shutting_down.set()
-        # noinspection PyTypeChecker
-        self._show_event(UpdatesApiFullData(name='__shutdown', _hash='', is_remove=None, obj=None))
-
-        # If we were too fast, ensure that at least one client has connected
-        graceful_secs_connect = float(os.getenv('YACV_GRACEFUL_SECS_CONNECT', 12.0))
-        if graceful_secs_connect > 0:
-            start = time.time()
-            try:
-                if not self.at_least_one_client.is_set():
-                    logger.warning(
-                        'Waiting for at least one frontend request before stopping server, cancel with CTRL+C...')
-                while (not self.at_least_one_client.wait(graceful_secs_connect / 10) and
-                       time.time() - start < graceful_secs_connect):
-                    time.sleep(0.01)
-            except KeyboardInterrupt:
-                pass
-
-        # Wait for the server to stop gracefully (all frontends to stop working)
-        graceful_secs_request = float(os.getenv('YACV_GRACEFUL_SECS_WORK', 1000000))
-        with self.frontend_lock.w_locked(timeout=graceful_secs_request):
-            # Stop the server
-            self.server.shutdown()
-
-            # Wait for the server thread to stop
-            self.server_thread.join(timeout=30)
-            self.server_thread = None
-            if len(args) >= 1 and args[0] in (signal.SIGINT, signal.SIGTERM):
-                sys.exit(0)  # Exit with success
-
-    _yacvServerModelPrefix = "yacv_server://model/"
-
-    def _run_server(self):
-        """Runs the web server"""
-        logger.info('Starting server in %s mode...', self.protocol.name)
-        self.server = ThreadingHTTPServer(
-            (os.getenv('YACV_HOST', 'localhost'), int(os.getenv('YACV_PORT', 32323))),
-            lambda a, b, c: HTTPHandler(a, b, c, yacv=self))
-        # noinspection HttpUrlsUsage
-        logger.info(f'Serving at http://{self.server.server_name}:{self.server.server_port}')
-        self.startup_complete.set()
-        self.server.serve_forever()
+    _stderr_model_prefix = "glb_preview_server://model/"
 
     def _show_event(self, event: UpdatesApiFullData):
         """Handles a show event by publishing it to the show events buffer (and special handling for stderr protocol)."""
         self.show_events.publish(event)
         # If the protocol is STDERR, we need to print the event to stderr
-        if self.protocol == YACVProtocol.STDERR:
-            msg = f'{self._yacvServerModelPrefix}{event.to_json()}'
+        if self.protocol == GlbPreviewProtocol.STDERR:
+            msg = f'{self._stderr_model_prefix}{event.to_json()}'
             if not event.is_remove:
                 # Always build the object even if the interface already has it (optimization disabled for Pyodide)
                 glb_and_hash = self.export(event.name)
@@ -241,13 +186,13 @@ class YACV:
                 msg += f'{base64.b64encode(glb).decode("utf-8")}'
             print(msg, file=sys.stderr, flush=True)
 
-    def show(self, *objs: List[YACVSupported], names: Optional[Union[str, List[str]]] = None, **kwargs):
+    def show(self, *objs: List[GlbPreviewObject], names: Optional[Union[str, List[str]]] = None, **kwargs):
         """
         Shows the given CAD objects in the frontend. The objects will be tessellated and converted to GLTF. Optionally,
         the following keyword arguments can be used:
 
         - auto_clear: Whether to clear the previous objects before showing the new ones (default: True)
-        - texture: The texture to use for the faces of the object (see `YACV.texture` for more info)
+        - texture: The texture to use for the faces of the object (see `GlbPreview.texture` for more info)
         - color: The default color to use for the objects (can be overridden by the `color` attribute of each object)
         - tolerance: The tolerance for tessellating the object (default: 0.1)
         - angular_tolerance: The angular tolerance for tessellating the object (default: 0.1)
@@ -288,7 +233,7 @@ class YACV:
             _kwargs = kwargs.copy()
             if obj_color is not None:
                 _kwargs['color_obj'] = obj_color  # Only applies to highest-dimensional objects
-            _kwargs['texture'] = _read_texture_uri(getattr(obj, 'yacv_texture', None) or kwargs.get('texture', None))
+            _kwargs['texture'] = _read_texture_uri(getattr(obj, 'glb_preview_texture', None) or kwargs.get('texture', None))
             if not isinstance(obj, bytes):
                 obj = _preprocess_cad(obj, **_kwargs)
             _hash = _hashcode(obj, **_kwargs)
@@ -296,6 +241,28 @@ class YACV:
             self._show_event(event)
 
         logger.info('show %s took %.3f seconds', names, time.time() - start)
+
+    def ingest_prebuilt_glb(
+        self,
+        name: str,
+        content_hash: str,
+        glb: bytes,
+        kwargs: Optional[Dict[str, any]] = None,
+        *,
+        auto_clear: bool = False,
+        except_names: Optional[List[str]] = None,
+    ) -> None:
+        """Register a ready-made GLB (e.g. from HTTP upload) like ``show`` for bytes, without tessellation."""
+        kwargs = kwargs or {}
+        if auto_clear:
+            self.clear(except_names=list(except_names or []))
+        for old_event in list(self.show_events.buffer()):
+            if old_event.name == name:
+                self.show_events.delete(old_event)
+                if name in self.build_events:
+                    del self.build_events[name]
+        event = UpdatesApiFullData(name=name, _hash=content_hash, obj=glb, kwargs=kwargs)
+        self._show_event(event)
 
     def show_cad_all(self, **kwargs):
         """Publishes all CAD objects in the current scope to the server. See `show` for more details."""
@@ -489,6 +456,31 @@ def _find_var_name(obj: any, avoid_levels: int = 2) -> str:
     t = obj.__class__.__name__
     _obj_name_counts[t] = 1 if t not in _obj_name_counts else _obj_name_counts[t] + 1
     return t + str(_obj_name_counts[t])
+
+
+def prepare_glb_upload_batch(
+    *objs,
+    names: Optional[Union[str, List[str]]] = None,
+    **kwargs,
+) -> Tuple[List[Tuple[str, bytes, str, Dict[str, Any]]], List[str]]:
+    """
+    Tessellate like ``GlbPreview.show`` on a scratch instance and return ``(name, glb, hash, kwargs)`` per object.
+    The second return value is the resolved name list in the same order as the payloads.
+    """
+    resolved = names or [_find_var_name(obj) for obj in objs]
+    if isinstance(resolved, str):
+        resolved = [resolved]
+    tmp = GlbPreview()
+    tmp.show(*objs, names=resolved, **kwargs)
+    payloads: List[Tuple[str, bytes, str, Dict[str, Any]]] = []
+    for name in resolved:
+        exp = tmp.export(name)
+        if exp is None:
+            continue
+        glb, _ = exp
+        ev = tmp._show_events(name)[-1]
+        payloads.append((name, glb, ev.hash, dict(ev.kwargs or {})))
+    return payloads, resolved
 
 
 def sizeof_fmt(num, suffix="B"):

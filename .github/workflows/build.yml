@@ -37,8 +37,8 @@ jobs:
         with:
           ref: "${{ inputs.ref }}"
       - uses: "astral-sh/setup-uv@v8.1.0"
-      - run: "export YACV_SKIP_FRONTEND_BUILD=true && uv sync --frozen"
-      - run: "export YACV_SKIP_FRONTEND_BUILD=true && uv build"
+      - run: "export GLB_PREVIEW_SKIP_FRONTEND_BUILD=true && uv sync --frozen"
+      - run: "export GLB_PREVIEW_SKIP_FRONTEND_BUILD=true && uv build"
       - uses: "actions/upload-artifact@v7"
         with:
           name: "wheel"
@@ -53,7 +53,7 @@ jobs:
         with:
           ref: "${{ inputs.ref }}"
       - uses: "astral-sh/setup-uv@v8.1.0"
-      - run: "export YACV_SKIP_FRONTEND_BUILD=true && uv run --frozen python yacv_server/logo.py"
+      - run: "export GLB_PREVIEW_SKIP_FRONTEND_BUILD=true && uv run --frozen python glb_preview_server/logo.py"
       - uses: "actions/upload-artifact@v7"
         with:
           name: "logo"
@@ -68,9 +68,9 @@ jobs:
         with:
           ref: "${{ inputs.ref }}"
       - uses: "astral-sh/setup-uv@v8.1.0"
-      - run: "export YACV_SKIP_FRONTEND_BUILD=true && uv run --frozen python example/object.py"
+      - run: "export GLB_PREVIEW_SKIP_FRONTEND_BUILD=true && uv run --frozen python example/object.py"
         env:
-          YACV_DISABLE_SERVER: "true" # Ensure the server is not started during the example build
+          GLB_PREVIEW_DISABLE_SERVER: "true" # Ensure the server is not started during the example build
       - uses: "actions/upload-artifact@v7"
         with:
           name: "example"

@@ -5,10 +5,13 @@ import {VBtn, VTooltip} from "vuetify/lib/components/index.mjs";
 import SvgIcon from "@jamescoyle/vue-icon";
 
 // @ts-expect-error
-let isSmallBuild = typeof __YACV_SMALL_BUILD__ !== 'undefined' && __YACV_SMALL_BUILD__;
+let isSmallBuild = typeof __GLB_PREVIEW_SMALL_BUILD__ !== 'undefined' && __GLB_PREVIEW_SMALL_BUILD__;
 
-function clickedButton() { // Redirect to the main build
-  window.open("https://yeicor-3d.github.io/yet-another-cad-viewer/" + window.location.search + window.location.hash, '_blank');
+function clickedButton() { // Open full build (same deployment, full bundle)
+  const u = new URL(".", window.location.href);
+  u.search = window.location.search;
+  u.hash = window.location.hash;
+  window.open(u.href, "_blank");
 }
 </script>
 

@@ -74,9 +74,10 @@ export const settings = (async () => {
                 settings.preload = settings.preload.slice(0, i).concat(settings.preload.slice(i + 1));
                 continue; // Skip this preload URL
             }
-            const possibleBackend = new URL("./?api_updates=true", window.location.href)
+            const possibleBackend = new URL("/api/updates", window.location.origin)
             await fetch(possibleBackend, {method: "HEAD"}).then((response) => {
-                if (response.ok && response.headers.get("Content-Type") === "text/event-stream") {
+                const ct = response.headers.get("Content-Type") || "";
+                if (response.ok && ct.startsWith("text/event-stream")) {
                     // Frontend served by the backend: default to this URL for updates
                     url = "dev+" + possibleBackend.href;
                 }

@@ -3,22 +3,26 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "yacv-server"
+name = "glb-preview-server"
 version = "0.10.16"
-description = "Yet Another CAD Viewer (server)"
+description = "Web server and viewer for GLB/CAD preview (forked from Yet Another CAD Viewer)"
 authors = [{ name = "Yeicor", email = "4929005+Yeicor@users.noreply.github.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "build123d>=0.10,<0.11",
+    "flask>=3.0",
     "pygltflib>=1.16",
     "pillow>=11.0", # Pyodide has version 11.3, do not upgrade until ready.
 ]
 
+[project.scripts]
+glb-preview-server = "glb_preview_server.cli:main"
+
 [tool.hatch.build.targets.wheel]
-packages = [ "yacv_server" ]
-include = [ "/yacv_server/frontend" ]
+packages = [ "glb_preview_server" ]
+include = [ "/glb_preview_server/frontend" ]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"

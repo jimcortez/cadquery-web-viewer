@@ -7,7 +7,7 @@ from build123d import Compound
 
 logging.basicConfig(level=logging.DEBUG)
 
-from yacv_server import show, export_all  # Check out other exported methods for more features!
+from glb_preview_server import show, export_all  # Check out other exported methods for more features!
 
 # %%
 

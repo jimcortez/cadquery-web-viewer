@@ -107,13 +107,14 @@ let preloadingModels = ref<Array<string>>([]);
 })();
 
 async function loadModelManual() {
-  const modelUrl = prompt("For an improved experience in viewing CAD/GLTF models with automatic updates, it's recommended to use the official yacv_server Python package. This ensures seamless serving of models and automatic updates.\n\nOtherwise, enter the URL of the model to load:");
+  const modelUrl = prompt("For live CAD/GLTF updates from Python, install the glb-preview-server package and run the Flask app, then load models via the server URL.\n\nOtherwise, enter the URL of a .glb/.gltf file to load:");
   if (modelUrl) await networkMgr.load(modelUrl);
 }
 
 function loadDemoModels() {
+  const base = new URL("assets/", window.location.href);
   for (let name of ['fox.glb', 'img.glb', 'location.glb', 'logo.glb', 'logo_hl.glb', 'logo_hl_tex.glb']) {
-    networkMgr.load(`https://yeicor-3d.github.io/yet-another-cad-viewer/${name}`)
+    networkMgr.load(new URL(name, base).href)
   }
 }
 

@@ -8,13 +8,13 @@ bootstrap_code = await response.string()
 exec(bootstrap_code)
 await bootstrap()
 
-# Install the yacv_server package, which is the main server for the OCP.wasm playground.
-await micropip.install("yacv_server", pre=True)
+# Install glb-preview-server (Python package glb_preview_server) for the playground.
+await micropip.install("glb-preview-server", pre=True)
 
-# Preimport the yacv_server package to ensure it is available in the global scope, and mock the ocp_vscode package.
-from yacv_server import *
+# Preimport so symbols are in global scope; mock ocp_vscode for editor integration.
+from glb_preview_server import *
 
-micropip.add_mock_package("ocp-vscode", "2.8.9", modules={"ocp_vscode": 'from yacv_server import *'})
+micropip.add_mock_package("ocp-vscode", "2.8.9", modules={"ocp_vscode": 'from glb_preview_server import *'})
 show_object = show
 
 # Preinstall the font-fetcher package and install its hook to automatically download any requested font.

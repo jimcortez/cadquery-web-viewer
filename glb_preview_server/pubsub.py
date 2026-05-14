@@ -2,7 +2,7 @@ import queue
 import threading
 from typing import List, TypeVar, Generic, Generator
 
-from yacv_server.mylogger import logger
+from glb_preview_server.mylogger import logger
 
 T = TypeVar('T')
 

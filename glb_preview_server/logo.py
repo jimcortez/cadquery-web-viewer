@@ -14,7 +14,7 @@ def build_logo(text: bool = True) -> Dict[str, Union[Compound, Location, str]]:
         offset(solid(), 2, openings=faces().group_by(Axis.Z)[0] + faces().filter_by(Plane.XZ))
         if text:
             with BuildSketch(Plane.YZ.move(Pos(faces().group_by(Axis.X)[-1].face().center()))):
-                Text('Yet Another\nCAD Viewer', 6, font_path='/usr/share/fonts/TTF/Hack-Regular.ttf')
+                Text('GLB Preview\nServer', 6, font_path='/usr/share/fonts/TTF/Hack-Regular.ttf')
             extrude(amount=1)
         logo_face_curved_front = faces().filter_by(GeomType.CYLINDER).group_by(Axis.X)[-1].face()
 
@@ -24,7 +24,7 @@ def build_logo(text: bool = True) -> Dict[str, Union[Compound, Location, str]]:
     logo_obj_hl.color = (0, 0.3, 0.3, 1)
 
     # Highlight face with custom texture
-    logo_face_curved_front.yacv_texture = \
+    logo_face_curved_front.glb_preview_texture = \
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAF0lEQVQI12N49OjR////Gf' \
         '/////48WMATwULS8tcyj8AAAAASUVORK5CYII='
     logo_face_curved_front.color = (0, 0.5, 0.0, 1)
@@ -53,9 +53,9 @@ if __name__ == "__main__":
     if not testing_server:
         # Start an offline server to export the CAD part of the logo in a way compatible with the frontend
         # If this is not set, the server will auto-start on import and show_* calls will provide live updates
-        os.environ['YACV_DISABLE_SERVER'] = 'True'
+        os.environ['GLB_PREVIEW_DISABLE_SERVER'] = 'True'
 
-    from yacv_server import export_all, show, image_to_gltf
+    from glb_preview_server import export_all, show, image_to_gltf
 
     # Build the CAD part of the logo
     logo = build_logo()

@@ -1,7 +1,7 @@
 {
-  "name": "yet-another-cad-viewer",
+  "name": "glb-preview-server",
   "version": "0.10.16",
-  "description": "",
+  "description": "Web viewer and Flask server for GLB/CAD preview",
   "license": "MIT",
   "private": true,
   "author": "Yeicor <4929005+Yeicor@users.noreply.github.com>",

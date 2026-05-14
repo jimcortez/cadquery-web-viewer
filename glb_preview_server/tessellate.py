@@ -10,9 +10,9 @@ from OCP.TopoDS import TopoDS_Face, TopoDS_Edge, TopoDS_Shape, TopoDS_Vertex
 from build123d import Vertex, Face, Location, Compound, Vector
 from pygltflib import GLTF2
 
-from yacv_server.cad import CADCoreLike, ColorTuple
-from yacv_server.gltf import GLTFMgr
-from yacv_server.mylogger import logger
+from glb_preview_server.cad import CADCoreLike, ColorTuple
+from glb_preview_server.gltf import GLTFMgr
+from glb_preview_server.mylogger import logger
 
 
 def tessellate(
