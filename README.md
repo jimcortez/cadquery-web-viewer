@@ -69,6 +69,47 @@ cadquery-web-viewer --host localhost --port 32323
 
 **Cache** (separate idea): add `--cache-mode memory` or `--cache-mode disk`. With `disk`, set `--cache-dir` to the folder you want. Defaults live in the CLI; there are no environment-variable overrides for host, port, or cache mode.
 
+## Run with Docker
+
+The [Dockerfile](Dockerfile) in this repository builds an image with the **compiled frontend** and the **Python package** installed. Use it when you want the long-lived viewer server in a container instead of installing CadQuery tooling on the host.
+
+**Build** from the repository root (use `linux/amd64` so the image matches the architecture of published `cadquery-ocp` wheels, including on Apple Silicon hosts):
+
+```bash
+docker build --platform linux/amd64 -t cadquery-web-viewer:local .
+```
+
+**Run** maps the default app port `32323` on the container to the same port on your machine. The process listens on all interfaces inside the container so you can reach it from the host.
+
+```bash
+docker run --rm --platform linux/amd64 -p 32323:32323 cadquery-web-viewer:local
+```
+
+Open `http://localhost:32323` in a browser. From Python on the host, use `server_type="remote"` and `remote_options` with the same host and port you published (see **Remote server** in [Call `show()` from Python](#call-show-from-python)).
+
+**Configure the container** with environment variables read by [docker-entrypoint.sh](docker-entrypoint.sh) (these apply to the image entrypoint, not to a plain `cadquery-web-viewer` install on your PATH):
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CADQUERY_WEB_VIEWER_HOST` | `0.0.0.0` | Bind address inside the container. |
+| `CADQUERY_WEB_VIEWER_PORT` | `32323` | App port (match your `-p host:container` mapping). |
+| `CADQUERY_WEB_VIEWER_CACHE_MODE` | `memory` | `memory` or `disk`. |
+| `CADQUERY_WEB_VIEWER_CACHE_DIR` | *(empty)* | Required when cache mode is `disk`; mount a volume if you want the cache to persist. |
+| `PUID` / `PGID` | *(unset)* | When both are set, the server runs as that uid/gid via `su-exec` (useful to match a bind-mounted cache directory). |
+
+**Disk cache example:** mount a writable directory and point the cache there:
+
+```bash
+docker run --rm --platform linux/amd64 \
+  -p 32323:32323 \
+  -v cadquery-web-viewer-cache:/cache \
+  -e CADQUERY_WEB_VIEWER_CACHE_MODE=disk \
+  -e CADQUERY_WEB_VIEWER_CACHE_DIR=/cache \
+  cadquery-web-viewer:local
+```
+
+An interactive walkthrough that prints a matching `docker run` line is in [`examples/remote/`](examples/remote/).
+
 ## Call `show()` from Python
 
 ### Embedded viewer (default)
