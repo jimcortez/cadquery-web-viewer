@@ -85,18 +85,3 @@ jobs:
           name: logo
           path: assets/logo_build
           retention-days: 5
-
-  build-example:
-    name: Build examples (in-process)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref }}
-      - uses: astral-sh/setup-uv@v5
-      - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv run --frozen python examples/in-process/object.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: examples-in-process-export
-          path: export
-          retention-days: 5

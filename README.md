@@ -194,7 +194,7 @@ export_all("./glbs")
 
 | Folder | Purpose |
 |--------|---------|
-| [`examples/in-process/`](examples/in-process/) | Full build123d sample, `show()` with optional textures; under `CI`, runs `export_all("export")`. |
+| [`examples/in-process/`](examples/in-process/) | Full build123d sample, `show()` with optional textures; with `CI` set, runs `export_all("export")` after the viewer closes (not run in GitHub Actions). |
 | [`examples/remote/`](examples/remote/) | Same style of model sent with `server_type="remote"`. |
 
 ## Migrating from `yacv-server` / `yacv-viewer`
