@@ -35,12 +35,24 @@ def _in_process_session(
         server_options,
         daemon_thread=not block_until_disconnect,
     )
+    # Ctrl+C during ``wait_until_no_sse_streams`` used to abort ``finally`` before
+    # ``shutdown_embedded()``. Ctrl+C during ``body()`` also led to the same wait and
+    # a second interrupt. Skip the wait after any KeyboardInterrupt; always shut down.
+    skip_wait_due_to_interrupt = False
     try:
         body()
+    except KeyboardInterrupt:
+        skip_wait_due_to_interrupt = True
     finally:
         if block_until_disconnect:
-            viewer.wait_until_no_sse_streams(timeout=None)
+            if not skip_wait_due_to_interrupt:
+                try:
+                    viewer.wait_until_no_sse_streams(timeout=None)
+                except KeyboardInterrupt:
+                    skip_wait_due_to_interrupt = True
             embedded_server.shutdown_embedded()
+    if skip_wait_due_to_interrupt:
+        raise KeyboardInterrupt from None
 
 
 def show(
