@@ -4,6 +4,26 @@
 
 The API and packaging are meant to be a **mostly drop-in replacement** for [Yet Another CAD Viewer (YACV)](https://github.com/yeicor-3d/yet-another-cad-viewer). Renames and explicit `server_type` are covered in **Migrating from `yacv-server` / `yacv-viewer`** below; project history and upstream links are in **Special thanks** at the end of this file.
 
+## Table of contents
+
+- [Quick start](#quick-start)
+  - [Install the package](#install-the-package)
+  - [Run from Python](#run-from-python)
+- [What you get](#what-you-get)
+- [Run the app as a server](#run-the-app-as-a-server)
+- [Run with Docker](#run-with-docker)
+- [Call `show()` from Python](#call-show-from-python)
+  - [Embedded viewer (default)](#embedded-viewer-default)
+  - [Host, port, and timeouts](#host-port-and-timeouts)
+  - [Several `show()` calls in one script](#several-show-calls-in-one-script)
+  - [Remote server (Flask already running)](#remote-server-flask-already-running)
+  - [Buffer only, then export GLBs (no browser)](#buffer-only-then-export-glbs-no-browser)
+- [Examples in this repo](#examples-in-this-repo)
+- [Migrating from `yacv-server` / `yacv-viewer`](#migrating-from-yacv-server--yacv-viewer)
+- [Develop the UI and Python backend](#develop-the-ui-and-python-backend)
+- [Related projects](#related-projects)
+- [Special thanks](#special-thanks)
+
 ## Quick start
 
 Requires **Python 3.10 through 3.12** (see `requires-python` in `pyproject.toml`).
