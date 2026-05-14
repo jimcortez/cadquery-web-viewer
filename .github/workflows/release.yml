@@ -37,7 +37,7 @@ jobs:
           cache: yarn
       - run: corepack enable && corepack prepare yarn@1.22.22 --activate
       - run: yarn version --new-version "$CLEAN_VERSION" --no-git-tag-version
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: sed -i "s/^version = .*/version = \"$CLEAN_VERSION\"/" pyproject.toml
       - if: steps.check_recursive.outputs.skip != 'true'
         run: |
