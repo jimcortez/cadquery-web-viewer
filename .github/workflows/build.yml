@@ -61,18 +61,16 @@ jobs:
           retention-days: 5
 
   build-example:
-    name: "Build example"
+    name: "Build examples (in-process)"
     runs-on: "ubuntu-latest"
     steps:
       - uses: "actions/checkout@v6"
         with:
           ref: "${{ inputs.ref }}"
       - uses: "astral-sh/setup-uv@v8.1.0"
-      - run: "export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv run --frozen python example/object.py"
-        env:
-          CADQUERY_WEB_VIEWER_DISABLE_SERVER: "true" # Ensure the server is not started during the example build
+      - run: "export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv run --frozen python examples/in-process/object.py"
       - uses: "actions/upload-artifact@v7"
         with:
-          name: "example"
+          name: "examples-in-process-export"
           path: "export"
           retention-days: 5

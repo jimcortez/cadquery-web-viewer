@@ -25,16 +25,17 @@ def _cors(resp: Response) -> Response:
 def create_app(
     cache_mode: str = "memory",
     cache_dir: Optional[str] = None,
+    engine: Optional[CadQueryWebViewer] = None,
 ) -> Flask:
     """
     :param cache_mode: ``memory`` or ``disk``.
-    :param cache_dir: Required when ``cache_mode`` is ``disk`` (or set via ``CADQUERY_WEB_VIEWER_CACHE_DIR``).
+    :param cache_dir: Directory used when ``cache_mode`` is ``disk`` (defaults under ``~/.cache``).
+    :param engine: Shared viewer engine; if ``None``, a new :class:`CadQueryWebViewer` is created (CLI default).
     """
-    cache_mode = (cache_mode or os.environ.get("CADQUERY_WEB_VIEWER_CACHE_MODE", "memory")).lower()
+    cache_mode = (cache_mode or "memory").lower()
     if cache_mode not in ("memory", "disk"):
         raise ValueError("cache_mode must be 'memory' or 'disk'")
     if cache_mode == "disk":
-        cache_dir = cache_dir or os.environ.get("CADQUERY_WEB_VIEWER_CACHE_DIR")
         if not cache_dir:
             cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "cadquery-web-viewer", "glb")
         os.makedirs(cache_dir, exist_ok=True)
@@ -43,7 +44,7 @@ def create_app(
     else:
         disk_cache = None
 
-    engine = CadQueryWebViewer()
+    engine = engine or CadQueryWebViewer()
 
     if disk_cache is not None:
         for entry in disk_cache.list_entries():
@@ -66,25 +67,28 @@ def create_app(
     bp = Blueprint("api", __name__, url_prefix="/api")
 
     def _sse_gen():
-        yield "retry: 100\n\n"
-        with engine.frontend_lock.r_locked():
-            if engine.shutting_down.is_set() and engine.at_least_one_client.is_set():
-                return
-            engine.at_least_one_client.set()
-            logger.debug("Updates client connected")
-            subscription = engine.show_events.subscribe(yield_timeout=1.0)
-            try:
-                for data in subscription:
-                    if data is None:
-                        yield ":keep-alive\n\n"
-                    else:
-                        logger.debug("Sending info about %s", data.name)
-                        yield f"data: {data.to_json()}\n\n"
-            except (BrokenPipeError, ConnectionResetError, GeneratorExit):
-                pass
-            finally:
-                subscription.close()
-            logger.debug("Updates client disconnected")
+        engine.register_sse_stream_begin()
+        try:
+            yield "retry: 100\n\n"
+            with engine.frontend_lock.r_locked():
+                if engine.shutting_down.is_set() and engine.at_least_one_client.is_set():
+                    return
+                logger.debug("Updates client connected")
+                subscription = engine.show_events.subscribe(yield_timeout=1.0)
+                try:
+                    for data in subscription:
+                        if data is None:
+                            yield ":keep-alive\n\n"
+                        else:
+                            logger.debug("Sending info about %s", data.name)
+                            yield f"data: {data.to_json()}\n\n"
+                except (BrokenPipeError, ConnectionResetError, GeneratorExit):
+                    pass
+                finally:
+                    subscription.close()
+                logger.debug("Updates client disconnected")
+        finally:
+            engine.register_sse_stream_end()
 
     @bp.route("/updates", methods=["GET", "HEAD", "OPTIONS"])
     def api_updates():

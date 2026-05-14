@@ -50,18 +50,14 @@ if __name__ == "__main__":
 
     testing_server = os.getenv('TESTING_SERVER') is not None
 
-    if not testing_server:
-        # Start an offline server to export the CAD part of the logo in a way compatible with the frontend
-        # If this is not set, the server will auto-start on import and show_* calls will provide live updates
-        os.environ['CADQUERY_WEB_VIEWER_DISABLE_SERVER'] = 'True'
-
     from cadquery_web_viewer import export_all, show, image_to_gltf
 
     # Build the CAD part of the logo
     logo = build_logo()
 
-    # Add the CAD part of the logo to the server
-    show(*[obj for obj in logo.values()], names=[name for name in logo.keys()])
+    # Add the CAD part of the logo to the in-memory buffer (no HTTP when not testing the live server)
+    _show_kw = {} if testing_server else {"server_type": "local"}
+    show(*[obj for obj in logo.values()], names=[name for name in logo.keys()], **_show_kw)
 
     if testing_server:
         # remove('location')  # Test removing a part

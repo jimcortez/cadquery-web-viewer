@@ -96,6 +96,11 @@ class CadQueryWebViewer:
     frontend_lock: RWLock
     """Lock to ensure that the frontend has finished working before we shut down"""
 
+    _sse_stream_count: int
+    """Active ``GET /api/updates`` SSE streams (see ``register_sse_stream_begin``)."""
+    _sse_idle_cv: threading.Condition
+    """Notified when ``_sse_stream_count`` drops to zero."""
+
     texture: Optional[Tuple[bytes, str]]
     """Default texture to use for model faces, in (data, mimetype) format.
     If left as None, no texture will be used.
@@ -144,6 +149,8 @@ class CadQueryWebViewer:
         self.at_least_one_client = threading.Event()
         self.shutting_down = threading.Event()
         self.frontend_lock = RWLock()
+        self._sse_stream_count = 0
+        self._sse_idle_cv = threading.Condition(threading.Lock())
         self.texture = _read_texture_uri(os.getenv("CADQUERY_WEB_VIEWER_TEXTURE"))
         self.color_faces = _read_color(os.getenv("CADQUERY_WEB_VIEWER_COLOR_FACES", "#ffbf00"))  # Default yellow
         self.color_edges = _read_color(os.getenv("CADQUERY_WEB_VIEWER_COLOR_EDGES", "#1a1aff"))  # Default blue
@@ -155,8 +162,8 @@ class CadQueryWebViewer:
         if self.protocol == CadQueryWebViewerProtocol.STDERR:
             return
         logger.warning(
-            'CadQueryWebViewer.start() no longer starts an embedded HTTP server. Run `cadquery-web-viewer` and use remote '
-            '`show()`, or set CADQUERY_WEB_VIEWER_DISABLE_SERVER=1 for local in-process show/export.'
+            "CadQueryWebViewer.start() is a legacy hook; use show(..., server_type='in-process') "
+            "or run cadquery-web-viewer and show(..., server_type='remote')."
         )
         self.startup_complete.set()
 
@@ -167,6 +174,36 @@ class CadQueryWebViewer:
             return
         if self.server_thread is None:
             return
+
+    def register_sse_stream_begin(self) -> None:
+        """Increment active SSE stream count (``GET /api/updates``)."""
+        with self._sse_idle_cv:
+            self._sse_stream_count += 1
+            self.at_least_one_client.set()
+
+    def register_sse_stream_end(self) -> None:
+        """Decrement active SSE stream count; wake waiters when it reaches zero."""
+        with self._sse_idle_cv:
+            self._sse_stream_count -= 1
+            if self._sse_stream_count < 0:
+                logger.warning("SSE stream count underflow; resetting to 0")
+                self._sse_stream_count = 0
+            self._sse_idle_cv.notify_all()
+
+    def wait_until_no_sse_streams(self, timeout: Optional[float] = None) -> bool:
+        """
+        Block until there are no active SSE streams.
+
+        :return: ``True`` if count is zero (possibly after waiting), ``False`` on timeout while streams remained.
+        """
+        with self._sse_idle_cv:
+            deadline = None if timeout is None else (time.time() + timeout)
+            while self._sse_stream_count > 0:
+                remaining = None if deadline is None else (deadline - time.time())
+                if remaining is not None and remaining <= 0:
+                    return False
+                self._sse_idle_cv.wait(timeout=remaining)
+            return True
 
     _stderr_model_prefix = "cadquery_web_viewer://model/"
 

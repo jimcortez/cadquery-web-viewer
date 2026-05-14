@@ -9,7 +9,7 @@ Upstream reference: [yeicor-3d/yet-another-cad-viewer](https://github.com/yeicor
 - Cross-platform: works on any modern web browser.
 - Full [glTF 2.0](https://www.khronos.org/gltf/) and [model-viewer](https://modelviewer.dev/) capabilities (textures, PBR, AR, navigation).
 - Load multiple models, external URLs, and images as quads; clipping, transparency, edge/vertex styling, explode, topology picking, measurements.
-- Live updates while editing CAD in Python via the `cadquery-web-viewer` CLI (`cadquery-web-viewer` command) and the `cadquery_web_viewer` import package.
+- Live updates while editing CAD in Python via the `cadquery-web-viewer` CLI and the `cadquery_web_viewer` import package.
 - Optional disk cache for uploaded GLBs and static deployment of the built UI plus `.glb` files.
 
 ## Install
@@ -18,13 +18,74 @@ Upstream reference: [yeicor-3d/yet-another-cad-viewer](https://github.com/yeicor
 pip install cadquery-web-viewer
 ```
 
-Run the viewer and API (default `http://localhost:32323`):
+## Using the project as a **server**
+
+Install the package (globally or in a virtual environment) and run the Flask app that serves the static UI and `/api` (SSE, uploads, tessellation from remote clients):
 
 ```bash
-cadquery-web-viewer
+cadquery-web-viewer --host localhost --port 32323
 ```
 
-Environment variables use the `CADQUERY_WEB_VIEWER_*` prefix (for example `CADQUERY_WEB_VIEWER_HOST`, `CADQUERY_WEB_VIEWER_PORT`, `CADQUERY_WEB_VIEWER_DISABLE_SERVER`). See the [example](example) project and package CLI help for details.
+Optional flags: `--cache-mode memory|disk`, `--cache-dir <path>` when using disk cache. Defaults are defined in the CLI only (no environment-variable overrides).
+
+## Using the project as a **client** (from Python)
+
+### Embedded viewer (default)
+
+`show()` starts an in-process HTTP server on a background thread (sharing one tessellation engine with Flask), opens your browser, waits for the first EventSource client, publishes your model, then **blocks until every `/api/updates` connection has closed** and shuts the server down (so one-shot scripts behave like the classic `yacv-server` workflow).
+
+```python
+from cadquery_web_viewer import show
+
+show(my_solid)  # server_type="in-process" by default
+```
+
+See [examples/in-process](examples/in-process) for a **local-buffer** script (`server_type="local"`) plus CI `export_all`; use default `show()` above for the embedded viewer.
+
+Tune bind address, browser, and timeouts with `server_options` (plain dict), for example:
+
+```python
+show(my_solid, server_options={"host": "127.0.0.1", "port": 32323, "wait_for_client_timeout": 180.0})
+```
+
+For several `show()` calls in one script, pass `block_until_disconnect=False` on each call except the last so the embedded server stays up between calls.
+
+### Remote API (separate `cadquery-web-viewer` process)
+
+With a server already running, publish models over HTTP:
+
+```python
+from cadquery_web_viewer import show
+
+show(
+    my_solid,
+    server_type="remote",
+    remote_options={"host": "localhost", "port": 32323},  # optional keys: upload_timeout, post_timeout
+)
+```
+
+See [examples/remote](examples/remote) for a script that prints the server command to run in another window, then waits for you to press Enter before calling `show()`.
+
+### Local buffer only (no HTTP, for `export_all` / CI)
+
+```python
+from cadquery_web_viewer import show, export_all
+
+show(my_solid, server_type="local")
+export_all("./glbs")
+```
+
+## Migrating from **yacv-server** / **yacv-viewer**
+
+| Before (upstream / old names) | After (this fork) |
+|------------------------------|-------------------|
+| PyPI / import `yacv_server` | Package / import `cadquery_web_viewer` |
+| CLI `yacv-server` | CLI `cadquery-web-viewer` (`python -m cadquery_web_viewer`) |
+| Implicit “talk to a running server” via environment | Explicit `server_type`: `"in-process"` (default), `"remote"`, or `"local"` |
+| Separate process required for browser preview | Default `show()` embeds Flask + blocks until the tab is closed |
+| Host / port via env | `server_options` / `remote_options` dicts on `show`, `remove`, `clear`, `show_all` |
+
+The `CadQueryWebViewer` engine may still honor optional styling-related environment variables (for example texture and default colors); connection and server behavior for `show()` are controlled through the keyword arguments above.
 
 ## Development
 
@@ -59,7 +120,7 @@ To work on the backend only with a static UI, run `yarn install` if you have not
 
 ## Usage
 
-The [example](example) directory is a minimal project that calls `show()` / `export_all()` against a running server.
+The [examples](examples) directory has a **local-buffer** script under `in-process/`, a **remote** client under `remote/`, and CI exports GLBs from the in-process example when `CI` is set.
 
 The original project’s public demos remain on GitHub Pages under the YACV name. After you publish this fork’s frontend, you can use query parameters with your own base URL (for example `?preload=…` for static GLBs).
 

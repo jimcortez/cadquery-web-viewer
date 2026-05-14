@@ -3,6 +3,7 @@
 # Useful .gitignore templates: https://github.com/github/gitignore
 /node_modules/
 /dist/
+/export/
 /cadquery_web_viewer/frontend/
 /.cache/
 /.parcel-cache/
