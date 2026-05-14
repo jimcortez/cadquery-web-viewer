@@ -21,7 +21,7 @@ jobs:
     name: Build frontend (static site)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
       - uses: actions/setup-node@v5
@@ -43,7 +43,7 @@ jobs:
     name: Build Python package (sdist and wheel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
       - uses: astral-sh/setup-uv@v8.1.0
@@ -59,7 +59,7 @@ jobs:
     name: Build Docker image (validate, no push)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
       - uses: docker/setup-buildx-action@v4
@@ -75,7 +75,7 @@ jobs:
     name: Build logo
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
         with:
           ref: ${{ inputs.ref }}
       - uses: astral-sh/setup-uv@v8.1.0
