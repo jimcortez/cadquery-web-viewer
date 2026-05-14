@@ -22,50 +22,6 @@ async function check(lockerName: string) {
     return {response, status};
 }
 
-export async function uploadFile(name: string, data: Uint8Array): Promise<string> {
-    // "Free" storage, let's see how long it lasts...
-    // Create a locker
-    const lockerUrl = `https://vouz-backend.onrender.com/api/locker`
-    const lockerName = `glb-preview-pg-${name}-${Date.now()}`; // Unique locker name
-    let responsePromise = fetch(lockerUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({name: encrypt(lockerName), passkey: encrypt(lockerName)}),
-    });
-
-    // The previous request never answers 🤮
-    responsePromise.then((response) => console.warn(`Locker creation response: ${response.status} ${response.statusText} -- ${response.headers.get('Content-Type')}`));
-    // Instead, poll the check endpoint until the locker is created
-    let i: number;
-    for (i = 0; i < 10; i++) {
-        await new Promise(resolve => setTimeout(resolve, 250)); // Wait a bit before checking
-        try {
-            let {status} = await check(lockerName);
-            if (status && status.data && status.data.length == 0) break // Locker is created
-        } catch (e) { // Ignore errors, they will be thrown later
-        }
-    }
-    if (i >= 10) throw new Error(`Failed to create locker after 10 attempts: ${lockerName}`);
-
-    // Upload file to the locker
-    const uploadUrl = `https://vouz-backend.onrender.com/api/upload`;
-    const formData = new FormData();
-    formData.append('file', new Blob([data as ArrayBufferView<ArrayBuffer>], {type: 'application/octet-stream'}), name);
-    formData.append("name", encrypt(lockerName));
-    formData.append("passkey", encrypt(lockerName));
-    const response = await fetch(uploadUrl, {
-        method: 'POST',
-        body: formData,
-    })
-    if (!response.ok) throw new Error(`Failed to upload file: ${response.status} ${response.statusText} -- ${await response.text()}`);
-
-    // Fake URL for retrieveFile to work
-    return "https://vouz.tech#name=" + encodeURIComponent(name) + "&locker=" + encodeURIComponent(lockerName);
-}
-
 /** Given any URL, it retrieves the file, with custom code for the vouz.tech locker. */
 export async function retrieveFile(url: string): Promise<Response> {
     let realUrl = url;// Normal fetch if the URL is not a vouz.tech locker URL
@@ -81,7 +37,7 @@ export async function retrieveFile(url: string): Promise<Response> {
         })();
         // Get the URL of the uploaded file
         let {status} = await check(lockerName);
-        if (!status || !status.data || status.data.length == 0 || !status.data[0].url) {
+        if (!status || !status.data || status.data.length === 0 || !status.data[0].url) {
             throw new Error(`No file URL found in response: ${JSON.stringify(status)}`);
         }
         console.debug("File access requested successfully, URL:", status.data[0].url);

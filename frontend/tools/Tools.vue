@@ -21,7 +21,6 @@ import {
   mdiLicense,
   mdiLightbulb,
   mdiProjector,
-  mdiScriptTextPlay
 } from '@mdi/js'
 // @ts-expect-error
 import SvgIcon from '@jamescoyle/vue-icon';
@@ -30,9 +29,6 @@ import Loading from "../misc/Loading.vue";
 import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
 import {defineAsyncComponent, ref} from "vue";
 import type {SelectionInfo} from "./selection";
-import {settings} from "../misc/settings.ts";
-import type {NetworkUpdateEvent} from "../misc/network.ts";
-import IfNotSmallBuild from "../misc/IfNotSmallBuild.vue";
 
 const SelectionComponent = defineAsyncComponent({
   loader: () => import("./Selection.vue"),
@@ -47,24 +43,8 @@ const LicensesDialogContent = defineAsyncComponent({
   delay: 0,
 });
 
-const PlaygroundDialogContent = defineAsyncComponent({
-  loader: () => import("./PlaygroundDialogContent.vue"),
-  loadingComponent: Loading,
-  delay: 0,
-});
-
-
 let props = defineProps<{ viewer: InstanceType<typeof ModelViewerWrapper> | null }>();
-const emit = defineEmits<{ findModel: [string], updateModel: [NetworkUpdateEvent] }>()
-
-const sett = ref<any | null>(null);
-const showPlaygroundDialog = ref(false);
-const pg_model = ref({code: '# Loading...', firstTime: false});
-(async () => {
-  sett.value = await settings;
-  pg_model.value = {code: sett.value.pg_code, firstTime: true};
-  showPlaygroundDialog.value = pg_model.value.code != "";
-})();
+const emit = defineEmits<{ findModel: [string] }>()
 
 let selection = ref<Array<SelectionInfo>>([]);
 let selectionFaceCount = () => selection.value.filter((s) => s.kind == 'face').length
@@ -143,7 +123,7 @@ function removeObjectSelections(objName: string) {
   selectionComp.value?.updateDistances();
 }
 
-defineExpose({removeObjectSelections, openPlayground: () => showPlaygroundDialog.value = true});
+defineExpose({removeObjectSelections});
 
 // Add keyboard shortcuts
 document.addEventListener('keydown', (event) => {
@@ -186,21 +166,6 @@ document.addEventListener('keydown', (event) => {
   <v-divider/>
   <v-spacer></v-spacer>
   <h5>Extras</h5>
-  <v-dialog v-model="showPlaygroundDialog" persistent :scrim="false" attach="body">
-    <template v-slot:activator="{ props }">
-      <v-btn v-bind="props" style="width: 100%">
-        <v-tooltip activator="parent">Open a python editor and build models directly in the browser!</v-tooltip>
-        <svg-icon :path="mdiScriptTextPlay" type="mdi"/>
-        &nbsp;Sandbox
-      </v-btn>
-    </template>
-    <template v-slot:default="{ isActive }">
-      <if-not-small-build>
-        <playground-dialog-content v-if="sett != null" v-model="pg_model" @close="isActive.value = false"
-                                   @update-model="(event: NetworkUpdateEvent) => emit('updateModel', event)"/>
-      </if-not-small-build>
-    </template>
-  </v-dialog>
   <v-btn icon @click="downloadSceneGlb">
     <v-tooltip activator="parent">(D)ownload Scene</v-tooltip>
     <svg-icon :path="mdiDownload" type="mdi"/>

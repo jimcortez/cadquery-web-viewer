@@ -12,7 +12,7 @@ import {SceneMgr} from "./misc/scene";
 import {Document} from "@gltf-transform/core";
 import type ModelViewerWrapperT from "./viewer/ModelViewerWrapper.vue";
 import {isViewerReady} from "./viewer/viewerUtils";
-import {mdiCube, mdiPlus, mdiScriptTextPlay} from '@mdi/js'
+import {mdiCube, mdiPlus} from '@mdi/js'
 // @ts-expect-error
 import SvgIcon from '@jamescoyle/vue-icon';
 
@@ -103,7 +103,7 @@ let preloadingModels = ref<Array<string>>([]);
         console.error("Error preloading model", model, e);
       });
     }
-  } // else No preloaded models (useful for playground mode)
+  } // else No preloaded models configured
 })();
 
 async function loadModelManual() {
@@ -144,9 +144,6 @@ document.body.addEventListener("drop", async e => {
       <!-- A nice no model loaded alternative to avoid breaking model-viewer-wrapper -->
       <div v-else style="height: 100%; overflow-y: auto">
         <v-toolbar-title class="text-center ma-16 text-h5">No model loaded</v-toolbar-title>
-        <v-btn @click="() => tools?.openPlayground()" class="mx-auto d-block my-4">
-          <svg-icon :path="mdiScriptTextPlay" type="mdi"/>&nbsp; Open playground...
-        </v-btn>
         <v-btn @click="loadDemoModels" class="mx-auto d-block my-4">
           <svg-icon :path="mdiCube" type="mdi"/>&nbsp; Load demo models...
         </v-btn>
@@ -183,7 +180,7 @@ document.body.addEventListener("drop", async e => {
       <template #toolbar>
         <v-toolbar-title>Tools</v-toolbar-title>
       </template>
-      <tools ref="tools" :viewer="viewer" @find-model="models?.findModel" @update-model="onModelUpdateRequest"/>
+      <tools ref="tools" :viewer="viewer" @find-model="models?.findModel"/>
     </sidebar>
 
   </v-layout>

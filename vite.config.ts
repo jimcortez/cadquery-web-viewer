@@ -7,9 +7,6 @@ import vue from "@vitejs/plugin-vue";
 import vueJsx from "@vitejs/plugin-vue-jsx";
 import { name, version } from "./package.json";
 import { execSync } from "child_process";
-import { viteStaticCopy } from "vite-plugin-static-copy";
-import { dirname, join } from "path";
-import { version as pyodideVersion } from "pyodide";
 
 let wantsSmallBuild = process.env.GLB_PREVIEW_SMALL_BUILD == "true";
 
@@ -34,9 +31,7 @@ export default defineConfig({
       },
     }),
     vueJsx(),
-    viteStaticCopyPyodide(),
   ],
-  optimizeDeps: { exclude: ["pyodide"] },
   resolve: {
     alias: {
       // @ts-ignore
@@ -52,11 +47,6 @@ export default defineConfig({
       external: wantsSmallBuild
         ? [
             // Exclude some large optional dependencies if small build is requested (for embedding in python package)
-            "pyodide",
-            /.*\/pyodide-worker.*/,
-            "monaco-editor",
-            /monaco-editor\/.*/,
-            "@guolao/vue-monaco-editor",
             /three\/examples\/jsm\/libs\/draco\/draco_(en|de)coder\.js/,
           ]
         : [],
@@ -73,22 +63,3 @@ export default defineConfig({
     __GLB_PREVIEW_SMALL_BUILD__: JSON.stringify(wantsSmallBuild),
   },
 });
-
-function viteStaticCopyPyodide() {
-  // @ts-ignore
-  const pyodideDir = dirname(fileURLToPath(import.meta.resolve("pyodide")));
-  const pyodideInc = [];
-  for (let glob of ["**", "!**/*.{md,html}", "!**/*.d.ts", "!**/*.whl", "!**/node_modules"]) {
-    pyodideInc.push(join(pyodideDir, glob));
-  }
-  return viteStaticCopy({
-    targets: wantsSmallBuild
-      ? []
-      : [
-          {
-            src: pyodideInc,
-            dest: "pyodide-v" + pyodideVersion, // It would be better to use hashed names instead of folder...
-          },
-        ],
-  });
-}

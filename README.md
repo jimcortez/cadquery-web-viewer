@@ -10,7 +10,7 @@ Upstream reference: [yeicor-3d/yet-another-cad-viewer](https://github.com/yeicor
 - Full [glTF 2.0](https://www.khronos.org/gltf/) and [model-viewer](https://modelviewer.dev/) capabilities (textures, PBR, AR, navigation).
 - Load multiple models, external URLs, and images as quads; clipping, transparency, edge/vertex styling, explode, topology picking, measurements.
 - Live updates while editing CAD in Python via the `glb-preview-server` CLI (`glb-preview-server` command) and the `glb_preview_server` import package.
-- Optional disk cache for uploaded GLBs, static deployment of the built UI plus `.glb` files, and a Build123d playground (full build) backed by Pyodide.
+- Optional disk cache for uploaded GLBs and static deployment of the built UI plus `.glb` files.
 
 ## Install
 
@@ -61,13 +61,13 @@ To work on the backend only with a static UI, run `yarn install` if you have not
 
 The [example](example) directory is a minimal project that calls `show()` / `export_all()` against a running server.
 
-The original project’s public demos remain on GitHub Pages under the YACV name, for example the [interactive playground demo](https://yeicor-3d.github.io/yet-another-cad-viewer/#pg_code=https://raw.githubusercontent.com/gumyr/build123d/refs/heads/dev/examples/toy_truck.py). After you publish this fork’s frontend, use the same query parameters with your own base URL (for example `?preload=…` for static GLBs).
+The original project’s public demos remain on GitHub Pages under the YACV name. After you publish this fork’s frontend, you can use query parameters with your own base URL (for example `?preload=…` for static GLBs).
 
 ## Related projects
 
 - [cq-studio](https://github.com/ccazabon/cq-studio) — alternative file-watch workflow; historically related to the same viewer stack.
 - [build123d-docker](https://github.com/derhuerst/build123d-docker/pkgs/container/build123d) — containers for CAD tooling.
-- [OCP.wasm](https://github.com/yeicor/OCP.wasm/) — OpenCASCADE in the browser; powers the in-browser Build123d playground.
+- [OCP.wasm](https://github.com/yeicor/OCP.wasm/) — OpenCASCADE compiled for WebAssembly (related browser CAD stacks).
 
 ## License
 
