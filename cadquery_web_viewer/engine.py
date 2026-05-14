@@ -2,20 +2,21 @@ from __future__ import annotations
 
 import base64
 import inspect
+import json
 import os
 import sys
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from enum import Enum, auto
 from io import BytesIO
 from pathlib import Path
 from typing import Any, Union
 
 # noinspection PyProtectedMember
-from build123d import Axis, Location, Shape, Vector
-from dataclasses_json import dataclass_json
+from build123d import Axis, Location, Vector
+from build123d.topology.shape_core import Shape
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS_Shape
 from PIL import Image
@@ -28,7 +29,6 @@ from cadquery_web_viewer.rwlock import RWLock
 from cadquery_web_viewer.tessellate import tessellate
 
 
-@dataclass_json
 @dataclass
 class UpdatesApiData:
     """Data sent to the client through the updates API"""
@@ -39,6 +39,9 @@ class UpdatesApiData:
     """Hash of the object, to detect changes without rebuilding the object"""
     is_remove: bool | None = None
     """Whether to remove the object from the scene. If None, this is a shutdown request"""
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), separators=(",", ":"))
 
 
 CadQueryWebViewerObject = Union[bytes, CADCoreLike]
