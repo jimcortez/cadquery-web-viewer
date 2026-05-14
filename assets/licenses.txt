@@ -954,8 +954,7 @@ The above copyright notice and this permission notice shall be included in all c
 
 The following npm packages may be included in this product:
 
- - @img/sharp-linux-x64@0.34.5
- - @img/sharp-linuxmusl-x64@0.34.5
+ - @img/sharp-darwin-arm64@0.34.5
  - sharp@0.34.5
 
 These packages each contain the following license:
@@ -2172,12 +2171,11 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 -----------
 
-The following npm packages may be included in this product:
+The following npm package may be included in this product:
 
- - @img/sharp-libvips-linux-x64@1.2.4
- - @img/sharp-libvips-linuxmusl-x64@1.2.4
+ - @img/sharp-libvips-darwin-arm64@1.2.4
 
-These packages each contain the following license:
+This package contains the following license:
 
 LGPL-3.0-or-later
 
