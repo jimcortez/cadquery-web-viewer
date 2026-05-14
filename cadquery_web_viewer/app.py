@@ -9,10 +9,10 @@ from urllib.parse import unquote
 
 from flask import Blueprint, Flask, Response, abort, request, send_from_directory, stream_with_context
 
-from glb_preview_server.glb_cache import GlbDiskCache
-from glb_preview_server.myhttp import FRONTEND_BASE_PATH
-from glb_preview_server.mylogger import logger
-from glb_preview_server.engine import GlbPreview
+from cadquery_web_viewer.glb_cache import GlbDiskCache
+from cadquery_web_viewer.myhttp import FRONTEND_BASE_PATH
+from cadquery_web_viewer.mylogger import logger
+from cadquery_web_viewer.engine import CadQueryWebViewer
 
 
 def _cors(resp: Response) -> Response:
@@ -28,22 +28,22 @@ def create_app(
 ) -> Flask:
     """
     :param cache_mode: ``memory`` or ``disk``.
-    :param cache_dir: Required when ``cache_mode`` is ``disk`` (or set via ``GLB_PREVIEW_CACHE_DIR``).
+    :param cache_dir: Required when ``cache_mode`` is ``disk`` (or set via ``CADQUERY_WEB_VIEWER_CACHE_DIR``).
     """
-    cache_mode = (cache_mode or os.environ.get("GLB_PREVIEW_CACHE_MODE", "memory")).lower()
+    cache_mode = (cache_mode or os.environ.get("CADQUERY_WEB_VIEWER_CACHE_MODE", "memory")).lower()
     if cache_mode not in ("memory", "disk"):
         raise ValueError("cache_mode must be 'memory' or 'disk'")
     if cache_mode == "disk":
-        cache_dir = cache_dir or os.environ.get("GLB_PREVIEW_CACHE_DIR")
+        cache_dir = cache_dir or os.environ.get("CADQUERY_WEB_VIEWER_CACHE_DIR")
         if not cache_dir:
-            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "glb-preview-server", "glb")
+            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "cadquery-web-viewer", "glb")
         os.makedirs(cache_dir, exist_ok=True)
         disk_cache = GlbDiskCache(cache_dir)
         logger.info("GLB disk cache enabled at %s", cache_dir)
     else:
         disk_cache = None
 
-    engine = GlbPreview()
+    engine = CadQueryWebViewer()
 
     if disk_cache is not None:
         for entry in disk_cache.list_entries():

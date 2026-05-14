@@ -77,6 +77,25 @@ wheels = [
 ]
 
 [[package]]
+name = "cadquery-web-viewer"
+version = "0.10.16"
+source = { editable = "." }
+dependencies = [
+    { name = "build123d" },
+    { name = "flask" },
+    { name = "pillow" },
+    { name = "pygltflib" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "build123d", specifier = ">=0.10,<0.11" },
+    { name = "flask", specifier = ">=3.0" },
+    { name = "pillow", specifier = ">=11.0" },
+    { name = "pygltflib", specifier = ">=1.16" },
+]
+
+[[package]]
 name = "click"
 version = "8.3.3"
 source = { registry = "https://pypi.org/simple" }
@@ -226,25 +245,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/47/b3a5342d381595ef439adec67848bed561ab7fdb1019fa522e82101b7d9c/fonttools-4.62.1-cp312-cp312-win32.whl", hash = "sha256:a24decd24d60744ee8b4679d38e88b8303d86772053afc29b19d23bb8207803c", size = 2281278, upload-time = "2026-03-13T13:53:10.998Z" },
     { url = "https://files.pythonhosted.org/packages/28/b1/0c2ab56a16f409c6c8a68816e6af707827ad5d629634691ff60a52879792/fonttools-4.62.1-cp312-cp312-win_amd64.whl", hash = "sha256:9e7863e10b3de72376280b515d35b14f5eeed639d1aa7824f4cf06779ec65e42", size = 2331414, upload-time = "2026-03-13T13:53:13.992Z" },
     { url = "https://files.pythonhosted.org/packages/fd/ba/56147c165442cc5ba7e82ecf301c9a68353cede498185869e6e02b4c264f/fonttools-4.62.1-py3-none-any.whl", hash = "sha256:7487782e2113861f4ddcc07c3436450659e3caa5e470b27dc2177cade2d8e7fd", size = 1152647, upload-time = "2026-03-13T13:54:22.735Z" },
-]
-
-[[package]]
-name = "glb-preview-server"
-version = "0.10.16"
-source = { editable = "." }
-dependencies = [
-    { name = "build123d" },
-    { name = "flask" },
-    { name = "pillow" },
-    { name = "pygltflib" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "build123d", specifier = ">=0.10,<0.11" },
-    { name = "flask", specifier = ">=3.0" },
-    { name = "pillow", specifier = ">=11.0" },
-    { name = "pygltflib", specifier = ">=1.16" },
 ]
 
 [[package]]

@@ -3,7 +3,7 @@
 # Useful .gitignore templates: https://github.com/github/gitignore
 /node_modules/
 /dist/
-/glb_preview_server/frontend/
+/cadquery_web_viewer/frontend/
 /.cache/
 /.parcel-cache/
 /.idea/

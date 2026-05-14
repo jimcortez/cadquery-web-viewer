@@ -17,13 +17,13 @@ from PIL import Image
 from build123d import Shape, Axis, Location, Vector
 from dataclasses_json import dataclass_json
 
-from glb_preview_server.cad import _hashcode, get_color, ColorTuple
-from glb_preview_server.cad import get_shape, grab_all_cad, CADCoreLike, CADLike
-from glb_preview_server.gltf import get_version
-from glb_preview_server.mylogger import logger
-from glb_preview_server.pubsub import BufferedPubSub
-from glb_preview_server.rwlock import RWLock
-from glb_preview_server.tessellate import tessellate
+from cadquery_web_viewer.cad import _hashcode, get_color, ColorTuple
+from cadquery_web_viewer.cad import get_shape, grab_all_cad, CADCoreLike, CADLike
+from cadquery_web_viewer.gltf import get_version
+from cadquery_web_viewer.mylogger import logger
+from cadquery_web_viewer.pubsub import BufferedPubSub
+from cadquery_web_viewer.rwlock import RWLock
+from cadquery_web_viewer.tessellate import tessellate
 
 
 @dataclass_json
@@ -38,16 +38,16 @@ class UpdatesApiData:
     """Whether to remove the object from the scene. If None, this is a shutdown request"""
 
 
-GlbPreviewObject = Union[bytes, CADCoreLike]
+CadQueryWebViewerObject = Union[bytes, CADCoreLike]
 
 
 class UpdatesApiFullData(UpdatesApiData):
-    obj: GlbPreviewObject
+    obj: CadQueryWebViewerObject
     """The OCCT object (not serialized)"""
     kwargs: Optional[Dict[str, any]]
     """The show_object options, if any (not serialized)"""
 
-    def __init__(self, obj: GlbPreviewObject, name: str, _hash: str, is_remove: Optional[bool] = False,
+    def __init__(self, obj: CadQueryWebViewerObject, name: str, _hash: str, is_remove: Optional[bool] = False,
                  kwargs: Optional[Dict[str, any]] = None):
         self.name = name
         self.hash = _hash
@@ -60,7 +60,7 @@ class UpdatesApiFullData(UpdatesApiData):
         return super().to_json()
 
 
-class GlbPreviewProtocol(Enum):
+class CadQueryWebViewerProtocol(Enum):
     """Enum of communication protocols supported by the server"""
     HTTP = auto()
     """The recommended protocol for any platform that can run a web server."""
@@ -68,14 +68,14 @@ class GlbPreviewProtocol(Enum):
     """Prints the updates one by one to stderr (first metadata, then base64 of glb file) using a special prefix. Required for Pyodide support."""
 
 
-class GlbPreview:
+class CadQueryWebViewer:
     """Core preview engine: manages CAD/GLB objects and update streams for the viewer."""
 
     # Startup
-    protocol: GlbPreviewProtocol
+    protocol: CadQueryWebViewerProtocol
     """The protocol used by the server. Defaults to HTTP, but can be set to STDERR for Pyodide support."""
     server_thread: Optional[Any]
-    """Reserved; embedded HTTP server is no longer started from ``GlbPreview``."""
+    """Reserved; embedded HTTP server is no longer started from ``CadQueryWebViewer``."""
     server: Optional[Any]
     startup_complete: threading.Event
     """Event to signal when the server has started"""
@@ -100,7 +100,7 @@ class GlbPreview:
     """Default texture to use for model faces, in (data, mimetype) format.
     If left as None, no texture will be used.
     
-    It can be set with the GLB_PREVIEW_TEXTURE=<uri> and overridden by the custom `glb_preview_texture` attribute of an object.
+    It can be set with the CADQUERY_WEB_VIEWER_TEXTURE=<uri> and overridden by the custom `cadquery_web_viewer_texture` attribute of an object.
     The <uri> can be file:<path> or data:<mime>;base64,<data> where <mime> is the mime type and 
     <data> is the base64 encoded image."""
 
@@ -110,7 +110,7 @@ class GlbPreview:
     You can use `show(..., color_faces=...)` or the standard way of setting colors for build123d/cadquery objects to 
     override this color.
     
-    It can be set with the GLB_PREVIEW_COLOR_FACES=<color> environment variable, where <color> is a color
+    It can be set with the CADQUERY_WEB_VIEWER_COLOR_FACES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
     color_edges: Optional[ColorTuple]
@@ -119,7 +119,7 @@ class GlbPreview:
     You can use `show(..., color_edges=...) or the standard way of setting colors for build123d/cadquery objects to
     override this color.
         
-    It can be set with the GLB_PREVIEW_COLOR_EDGES=<color> environment variable, where <color> is a color
+    It can be set with the CADQUERY_WEB_VIEWER_COLOR_EDGES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
     color_vertices: Optional[ColorTuple]
@@ -128,13 +128,13 @@ class GlbPreview:
     You can use `show(..., color_vertices=...)` or the standard way of setting colors for build123d/cadquery objects to
     override this color.
     
-    It can be set with the GLB_PREVIEW_COLOR_VERTICES=<color> environment variable, where <color> is a color
+    It can be set with the CADQUERY_WEB_VIEWER_COLOR_VERTICES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
     def __init__(self):
-        """Initializes the glb-preview-server engine."""
-        raw_protocol = os.getenv('GLB_PREVIEW_PROTOCOL', 'http' if sys.platform != 'emscripten' else 'stderr').upper()
-        self.protocol = GlbPreviewProtocol[raw_protocol] if raw_protocol in GlbPreviewProtocol.__members__ else GlbPreviewProtocol.HTTP
+        """Initializes the cadquery-web-viewer engine."""
+        raw_protocol = os.getenv('CADQUERY_WEB_VIEWER_PROTOCOL', 'http' if sys.platform != 'emscripten' else 'stderr').upper()
+        self.protocol = CadQueryWebViewerProtocol[raw_protocol] if raw_protocol in CadQueryWebViewerProtocol.__members__ else CadQueryWebViewerProtocol.HTTP
         self.server_thread = None
         self.server = None
         self.startup_complete = threading.Event()
@@ -144,37 +144,37 @@ class GlbPreview:
         self.at_least_one_client = threading.Event()
         self.shutting_down = threading.Event()
         self.frontend_lock = RWLock()
-        self.texture = _read_texture_uri(os.getenv("GLB_PREVIEW_TEXTURE"))
-        self.color_faces = _read_color(os.getenv("GLB_PREVIEW_COLOR_FACES", "#ffbf00"))  # Default yellow
-        self.color_edges = _read_color(os.getenv("GLB_PREVIEW_COLOR_EDGES", "#1a1aff"))  # Default blue
-        self.color_vertices = _read_color(os.getenv("GLB_PREVIEW_COLOR_VERTICES", "#1a1a1a"))  # Default dark gray
-        logger.info('Using glb-preview-server v%s', get_version())
+        self.texture = _read_texture_uri(os.getenv("CADQUERY_WEB_VIEWER_TEXTURE"))
+        self.color_faces = _read_color(os.getenv("CADQUERY_WEB_VIEWER_COLOR_FACES", "#ffbf00"))  # Default yellow
+        self.color_edges = _read_color(os.getenv("CADQUERY_WEB_VIEWER_COLOR_EDGES", "#1a1aff"))  # Default blue
+        self.color_vertices = _read_color(os.getenv("CADQUERY_WEB_VIEWER_COLOR_VERTICES", "#1a1a1a"))  # Default dark gray
+        logger.info('Using cadquery-web-viewer v%s', get_version())
 
     def start(self):
-        """Legacy hook: the HTTP viewer is served by the ``glb-preview-server`` Flask CLI, not this method."""
-        if self.protocol == GlbPreviewProtocol.STDERR:
+        """Legacy hook: the HTTP viewer is served by the ``cadquery-web-viewer`` Flask CLI, not this method."""
+        if self.protocol == CadQueryWebViewerProtocol.STDERR:
             return
         logger.warning(
-            'GlbPreview.start() no longer starts an embedded HTTP server. Run `glb-preview-server` and use remote '
-            '`show()`, or set GLB_PREVIEW_DISABLE_SERVER=1 for local in-process show/export.'
+            'CadQueryWebViewer.start() no longer starts an embedded HTTP server. Run `cadquery-web-viewer` and use remote '
+            '`show()`, or set CADQUERY_WEB_VIEWER_DISABLE_SERVER=1 for local in-process show/export.'
         )
         self.startup_complete.set()
 
     # noinspection PyUnusedLocal
     def stop(self, *args):
         """Legacy hook; embedded ``ThreadingHTTPServer`` is no longer used."""
-        if self.protocol == GlbPreviewProtocol.STDERR:
+        if self.protocol == CadQueryWebViewerProtocol.STDERR:
             return
         if self.server_thread is None:
             return
 
-    _stderr_model_prefix = "glb_preview_server://model/"
+    _stderr_model_prefix = "cadquery_web_viewer://model/"
 
     def _show_event(self, event: UpdatesApiFullData):
         """Handles a show event by publishing it to the show events buffer (and special handling for stderr protocol)."""
         self.show_events.publish(event)
         # If the protocol is STDERR, we need to print the event to stderr
-        if self.protocol == GlbPreviewProtocol.STDERR:
+        if self.protocol == CadQueryWebViewerProtocol.STDERR:
             msg = f'{self._stderr_model_prefix}{event.to_json()}'
             if not event.is_remove:
                 # Always build the object even if the interface already has it (optimization disabled for Pyodide)
@@ -186,13 +186,13 @@ class GlbPreview:
                 msg += f'{base64.b64encode(glb).decode("utf-8")}'
             print(msg, file=sys.stderr, flush=True)
 
-    def show(self, *objs: List[GlbPreviewObject], names: Optional[Union[str, List[str]]] = None, **kwargs):
+    def show(self, *objs: List[CadQueryWebViewerObject], names: Optional[Union[str, List[str]]] = None, **kwargs):
         """
         Shows the given CAD objects in the frontend. The objects will be tessellated and converted to GLTF. Optionally,
         the following keyword arguments can be used:
 
         - auto_clear: Whether to clear the previous objects before showing the new ones (default: True)
-        - texture: The texture to use for the faces of the object (see `GlbPreview.texture` for more info)
+        - texture: The texture to use for the faces of the object (see `CadQueryWebViewer.texture` for more info)
         - color: The default color to use for the objects (can be overridden by the `color` attribute of each object)
         - tolerance: The tolerance for tessellating the object (default: 0.1)
         - angular_tolerance: The angular tolerance for tessellating the object (default: 0.1)
@@ -233,7 +233,7 @@ class GlbPreview:
             _kwargs = kwargs.copy()
             if obj_color is not None:
                 _kwargs['color_obj'] = obj_color  # Only applies to highest-dimensional objects
-            _kwargs['texture'] = _read_texture_uri(getattr(obj, 'glb_preview_texture', None) or kwargs.get('texture', None))
+            _kwargs['texture'] = _read_texture_uri(getattr(obj, 'cadquery_web_viewer_texture', None) or kwargs.get('texture', None))
             if not isinstance(obj, bytes):
                 obj = _preprocess_cad(obj, **_kwargs)
             _hash = _hashcode(obj, **_kwargs)
@@ -464,13 +464,13 @@ def prepare_glb_upload_batch(
     **kwargs,
 ) -> Tuple[List[Tuple[str, bytes, str, Dict[str, Any]]], List[str]]:
     """
-    Tessellate like ``GlbPreview.show`` on a scratch instance and return ``(name, glb, hash, kwargs)`` per object.
+    Tessellate like ``CadQueryWebViewer.show`` on a scratch instance and return ``(name, glb, hash, kwargs)`` per object.
     The second return value is the resolved name list in the same order as the payloads.
     """
     resolved = names or [_find_var_name(obj) for obj in objs]
     if isinstance(resolved, str):
         resolved = [resolved]
-    tmp = GlbPreview()
+    tmp = CadQueryWebViewer()
     tmp.show(*objs, names=resolved, **kwargs)
     payloads: List[Tuple[str, bytes, str, Dict[str, Any]]] = []
     for name in resolved:

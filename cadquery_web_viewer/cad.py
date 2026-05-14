@@ -12,7 +12,7 @@ from OCP.TopTools import TopTools_IndexedMapOfShape
 from OCP.TopoDS import TopoDS_Shape
 from build123d import Compound, Color
 
-from glb_preview_server.gltf import GLTFMgr
+from cadquery_web_viewer.gltf import GLTFMgr
 
 CADCoreLike = Union[TopoDS_Shape, TopLoc_Location]  # Faces, Edges, Vertices and Locations for now
 CADLike = Union[CADCoreLike, any]  # build123d and cadquery types

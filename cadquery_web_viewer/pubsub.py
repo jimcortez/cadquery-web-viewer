@@ -2,7 +2,7 @@ import queue
 import threading
 from typing import List, TypeVar, Generic, Generator
 
-from glb_preview_server.mylogger import logger
+from cadquery_web_viewer.mylogger import logger
 
 T = TypeVar('T')
 

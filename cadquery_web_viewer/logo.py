@@ -24,7 +24,7 @@ def build_logo(text: bool = True) -> Dict[str, Union[Compound, Location, str]]:
     logo_obj_hl.color = (0, 0.3, 0.3, 1)
 
     # Highlight face with custom texture
-    logo_face_curved_front.glb_preview_texture = \
+    logo_face_curved_front.cadquery_web_viewer_texture = \
         'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAF0lEQVQI12N49OjR////Gf' \
         '/////48WMATwULS8tcyj8AAAAASUVORK5CYII='
     logo_face_curved_front.color = (0, 0.5, 0.0, 1)
@@ -53,9 +53,9 @@ if __name__ == "__main__":
     if not testing_server:
         # Start an offline server to export the CAD part of the logo in a way compatible with the frontend
         # If this is not set, the server will auto-start on import and show_* calls will provide live updates
-        os.environ['GLB_PREVIEW_DISABLE_SERVER'] = 'True'
+        os.environ['CADQUERY_WEB_VIEWER_DISABLE_SERVER'] = 'True'
 
-    from glb_preview_server import export_all, show, image_to_gltf
+    from cadquery_web_viewer import export_all, show, image_to_gltf
 
     # Build the CAD part of the logo
     logo = build_logo()

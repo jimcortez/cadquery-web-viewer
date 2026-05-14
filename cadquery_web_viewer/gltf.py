@@ -7,7 +7,7 @@ from pygltflib import *
 
 def get_version() -> str:
     try:
-        return importlib.metadata.version("glb-preview-server")
+        return importlib.metadata.version("cadquery-web-viewer")
     except importlib.metadata.PackageNotFoundError:
         return "unknown"
 
@@ -36,7 +36,7 @@ class GLTFMgr:
 
     def __init__(self, image: Optional[Tuple[bytes, str]] = None):
         self.gltf = GLTF2(
-            asset=Asset(generator=f"glb_preview_server@{get_version()}"),
+            asset=Asset(generator=f"cadquery_web_viewer@{get_version()}"),
             scene=0,
             scenes=[Scene(nodes=[0])],
             nodes=[Node(mesh=0)],  # TODO: Server-side detection of shallow copies --> nodes

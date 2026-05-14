@@ -8,7 +8,7 @@ import vueJsx from "@vitejs/plugin-vue-jsx";
 import { name, version } from "./package.json";
 import { execSync } from "child_process";
 
-let wantsSmallBuild = process.env.GLB_PREVIEW_SMALL_BUILD == "true";
+let wantsSmallBuild = process.env.CADQUERY_WEB_VIEWER_SMALL_BUILD == "true";
 
 // Helper to safely get git info
 function getGitInfo(command: string, fallback: string): string {
@@ -60,6 +60,6 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(version),
     __APP_GIT_SHA__: JSON.stringify(getGitInfo("git rev-parse HEAD", "unknown")),
     __APP_GIT_DIRTY__: JSON.stringify(getGitInfo("git diff --quiet || echo dirty", "")),
-    __GLB_PREVIEW_SMALL_BUILD__: JSON.stringify(wantsSmallBuild),
+    __CADQUERY_WEB_VIEWER_SMALL_BUILD__: JSON.stringify(wantsSmallBuild),
   },
 });

@@ -1,12 +1,12 @@
-# glb-preview-server example
+# cadquery-web-viewer example
 
 ## Installation
 
-1. Copy or clone this folder in the context of the full **glb-preview-server** repository (it depends on the repo root `pyproject.toml` / `uv.lock` when using `uv`).
+1. Copy or clone this folder in the context of the full **cadquery-web-viewer** repository (it depends on the repo root `pyproject.toml` / `uv.lock` when using `uv`).
 2. With Python 3.12 and [uv](https://docs.astral.sh/uv/) (or `pip`), install dependencies:
 
 ```bash
-cd /path/to/glb-preview-server
+cd /path/to/cadquery-web-viewer
 uv sync
 # or: pip install -r example/requirements.txt
 ```
@@ -18,14 +18,14 @@ uv sync
 1. Start the bundled viewer and API in one terminal:
 
    ```bash
-   glb-preview-server
+   cadquery-web-viewer
    ```
 
-   Defaults to `http://localhost:32323`. Use `--host` / `--port` or `GLB_PREVIEW_HOST` / `GLB_PREVIEW_PORT` to change the bind address.
+   Defaults to `http://localhost:32323`. Use `--host` / `--port` or `CADQUERY_WEB_VIEWER_HOST` / `CADQUERY_WEB_VIEWER_PORT` to change the bind address.
 
 2. In another terminal, run `uv run python example/object.py` (or `python object.py` from the `example/` directory with the venv active). Each `show(...)` call uploads tessellated models to that server over HTTP so the browser updates live.
 
-For a **local-only** workflow (no Flask process, useful for CI or exporting GLBs without a browser), set `GLB_PREVIEW_DISABLE_SERVER=1` before importing `glb_preview_server`. Then `show()` writes into an in-process buffer and `export_all()` works as before.
+For a **local-only** workflow (no Flask process, useful for CI or exporting GLBs without a browser), set `CADQUERY_WEB_VIEWER_DISABLE_SERVER=1` before importing `cadquery_web_viewer`. Then `show()` writes into an in-process buffer and `export_all()` works as before.
 
 The recommended way for interactive editing is still cell mode (`#%%`) in an IDE so slow imports run once while you iterate on `show(...)`.
 

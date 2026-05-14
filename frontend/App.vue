@@ -107,7 +107,7 @@ let preloadingModels = ref<Array<string>>([]);
 })();
 
 async function loadModelManual() {
-  const modelUrl = prompt("For live CAD/GLTF updates from Python, install the glb-preview-server package and run the Flask app, then load models via the server URL.\n\nOtherwise, enter the URL of a .glb/.gltf file to load:");
+  const modelUrl = prompt("For live CAD/GLTF updates from Python, install the cadquery-web-viewer package and run the Flask app, then load models via the server URL.\n\nOtherwise, enter the URL of a .glb/.gltf file to load:");
   if (modelUrl) await networkMgr.load(modelUrl);
 }
 

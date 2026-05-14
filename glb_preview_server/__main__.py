@@ -1,4 +1,0 @@
-from glb_preview_server.cli import main
-
-if __name__ == "__main__":
-    main()

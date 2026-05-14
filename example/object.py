@@ -7,7 +7,7 @@ from build123d import Compound
 
 logging.basicConfig(level=logging.DEBUG)
 
-from glb_preview_server import show, export_all  # Check out other exported methods for more features!
+from cadquery_web_viewer import show, export_all  # Check out other exported methods for more features!
 
 # %%
 

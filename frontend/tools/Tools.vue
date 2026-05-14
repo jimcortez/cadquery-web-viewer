@@ -112,7 +112,7 @@ async function downloadSceneGlb() {
 }
 
 async function openGithub() {
-  window.open('https://github.com/jecortez/glb-preview-server', '_blank')
+  window.open('https://github.com/jecortez/cadquery-web-viewer', '_blank')
 }
 
 function removeObjectSelections(objName: string) {

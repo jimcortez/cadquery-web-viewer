@@ -2,7 +2,7 @@
 
 import os
 
-from glb_preview_server.mylogger import logger
+from cadquery_web_viewer.mylogger import logger
 
 FILE_DIR = os.path.dirname(__file__)
 FRONTEND_BASE_PATH = os.getenv("FRONTEND_BASE_PATH", os.path.join(FILE_DIR, "frontend"))

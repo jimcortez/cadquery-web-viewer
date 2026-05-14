@@ -10,7 +10,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from glb_preview_server.mylogger import logger
+from cadquery_web_viewer.mylogger import logger
 
 SCHEMA_VERSION = 1
 META_SUFFIX = ".meta.json"

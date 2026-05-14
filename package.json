@@ -1,5 +1,5 @@
 {
-  "name": "glb-preview-server",
+  "name": "cadquery-web-viewer",
   "version": "0.10.16",
   "description": "Web viewer and Flask server for GLB/CAD preview",
   "license": "MIT",

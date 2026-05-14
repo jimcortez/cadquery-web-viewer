@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "glb-preview-server"
+name = "cadquery-web-viewer"
 version = "0.10.16"
 description = "Web server and viewer for GLB/CAD preview (forked from Yet Another CAD Viewer)"
 authors = [{ name = "Yeicor", email = "4929005+Yeicor@users.noreply.github.com" }]
@@ -18,11 +18,11 @@ dependencies = [
 ]
 
 [project.scripts]
-glb-preview-server = "glb_preview_server.cli:main"
+cadquery-web-viewer = "cadquery_web_viewer.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = [ "glb_preview_server" ]
-include = [ "/glb_preview_server/frontend" ]
+packages = [ "cadquery_web_viewer" ]
+include = [ "/cadquery_web_viewer/frontend" ]
 
 [tool.hatch.build.targets.wheel.hooks.custom]
 path = "hatch_build.py"

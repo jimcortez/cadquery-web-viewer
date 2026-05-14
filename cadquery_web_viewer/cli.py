@@ -3,33 +3,33 @@
 import argparse
 import os
 
-from glb_preview_server.app import create_app
-from glb_preview_server.mylogger import logger
+from cadquery_web_viewer.app import create_app
+from cadquery_web_viewer.mylogger import logger
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="glb-preview-server — Flask GLB/CAD viewer")
+    parser = argparse.ArgumentParser(description="cadquery-web-viewer — Flask GLB/CAD viewer")
     parser.add_argument(
         "--host",
-        default=os.environ.get("GLB_PREVIEW_HOST", "localhost"),
-        help="Bind address (default: localhost or GLB_PREVIEW_HOST)",
+        default=os.environ.get("CADQUERY_WEB_VIEWER_HOST", "localhost"),
+        help="Bind address (default: localhost or CADQUERY_WEB_VIEWER_HOST)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("GLB_PREVIEW_PORT", "32323")),
-        help="TCP port (default: 32323 or GLB_PREVIEW_PORT)",
+        default=int(os.environ.get("CADQUERY_WEB_VIEWER_PORT", "32323")),
+        help="TCP port (default: 32323 or CADQUERY_WEB_VIEWER_PORT)",
     )
     parser.add_argument(
         "--cache-mode",
         choices=("memory", "disk"),
-        default=os.environ.get("GLB_PREVIEW_CACHE_MODE", "memory"),
+        default=os.environ.get("CADQUERY_WEB_VIEWER_CACHE_MODE", "memory"),
         help="Store uploaded GLBs in RAM only, or on disk for persistence across restarts",
     )
     parser.add_argument(
         "--cache-dir",
-        default=os.environ.get("GLB_PREVIEW_CACHE_DIR"),
-        help="Directory for disk cache (default when disk: ~/.cache/glb-preview-server/glb or GLB_PREVIEW_CACHE_DIR)",
+        default=os.environ.get("CADQUERY_WEB_VIEWER_CACHE_DIR"),
+        help="Directory for disk cache (default when disk: ~/.cache/cadquery-web-viewer/glb or CADQUERY_WEB_VIEWER_CACHE_DIR)",
     )
     args = parser.parse_args()
     app = create_app(cache_mode=args.cache_mode, cache_dir=args.cache_dir)

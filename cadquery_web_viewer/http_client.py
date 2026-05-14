@@ -1,4 +1,4 @@
-"""HTTP client for posting models to a running ``glb-preview-server`` Flask instance."""
+"""HTTP client for posting models to a running ``cadquery-web-viewer`` Flask instance."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional, Union
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from glb_preview_server.mylogger import logger
-from glb_preview_server.engine import prepare_glb_upload_batch
+from cadquery_web_viewer.mylogger import logger
+from cadquery_web_viewer.engine import prepare_glb_upload_batch
 
 
 def _base(host: str, port: int) -> str:
@@ -51,8 +51,8 @@ def _post_json(host: str, port: int, path: str, body: dict, timeout: float = 60.
 
 
 def _resolve_host_port(host: Optional[str], port: Optional[int]) -> tuple[str, int]:
-    h = host or os.environ.get("GLB_PREVIEW_HOST", "localhost")
-    p = int(port if port is not None else os.environ.get("GLB_PREVIEW_PORT", 32323))
+    h = host or os.environ.get("CADQUERY_WEB_VIEWER_HOST", "localhost")
+    p = int(port if port is not None else os.environ.get("CADQUERY_WEB_VIEWER_PORT", 32323))
     return h, p
 
 

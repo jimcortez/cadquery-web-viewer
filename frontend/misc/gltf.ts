@@ -3,11 +3,11 @@ import { mergeDocuments, unpartition } from "@gltf-transform/functions";
 import { retrieveFile } from "../tools/upload-file.ts";
 
 let io = new WebIO();
-export let extrasNameKey = "__glb_preview_name";
+export let extrasNameKey = "__cadquery_web_viewer_name";
 export let extrasNameValueHelpers = "__helpers";
 
 // @ts-expect-error
-let isSmallBuild = typeof __GLB_PREVIEW_SMALL_BUILD__ !== "undefined" && __GLB_PREVIEW_SMALL_BUILD__;
+let isSmallBuild = typeof __CADQUERY_WEB_VIEWER_SMALL_BUILD__ !== "undefined" && __CADQUERY_WEB_VIEWER_SMALL_BUILD__;
 
 /**
  * Loads a GLB model from a URL and adds it to the document or replaces it if the names match.
