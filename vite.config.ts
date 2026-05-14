@@ -8,6 +8,8 @@ import { execSync } from "child_process";
 
 let wantsSmallBuild = process.env.CADQUERY_WEB_VIEWER_SMALL_BUILD == "true";
 
+const viteBase = (process.env.VITE_BASE ?? "").trim();
+
 // Helper to safely get git info
 function getGitInfo(command: string, fallback: string): string {
   try {
@@ -19,7 +21,7 @@ function getGitInfo(command: string, fallback: string): string {
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: "",
+  base: viteBase,
   plugins: [
     vue({
       template: {

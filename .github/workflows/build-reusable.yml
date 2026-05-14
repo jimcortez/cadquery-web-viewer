@@ -1,0 +1,102 @@
+name: Build artifacts
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+        description: Commit SHA, branch name, or tag to check out
+      vite_base:
+        type: string
+        required: false
+        default: ""
+        description: Optional Vite base path for static hosting (e.g. /repo-name/ for GitHub project Pages)
+
+permissions:
+  contents: read
+
+jobs:
+  build-frontend:
+    name: Build frontend (static site)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          check-latest: true
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn build
+        env:
+          VITE_BASE: ${{ inputs.vite_base }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: dist
+          retention-days: 5
+
+  build-python-package:
+    name: Build Python package (sdist and wheel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: astral-sh/setup-uv@v5
+      - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv sync --frozen
+      - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist
+          retention-days: 5
+
+  build-docker:
+    name: Build Docker image (validate, no push)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: cadquery-web-viewer:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-logo:
+    name: Build logo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: astral-sh/setup-uv@v5
+      - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv run --frozen python cadquery_web_viewer/logo.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: logo
+          path: assets/logo_build
+          retention-days: 5
+
+  build-example:
+    name: Build examples (in-process)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: astral-sh/setup-uv@v5
+      - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv run --frozen python examples/in-process/object.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: examples-in-process-export
+          path: export
+          retention-days: 5
