@@ -27,8 +27,7 @@ import {
   mdiVectorLine,
   mdiVectorRectangle
 } from '@mdi/js'
-// @ts-expect-error
-import SvgIcon from '@jamescoyle/vue-icon';
+import SvgIcon from "@jamescoyle/vue-icon";
 import {BackSide, FrontSide} from "three/src/constants.js";
 import {Box3} from "three/src/math/Box3.js";
 import {Color} from "three/src/math/Color.js";

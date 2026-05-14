@@ -22,20 +22,19 @@ import {
   mdiLightbulb,
   mdiProjector,
 } from '@mdi/js'
-// @ts-expect-error
-import SvgIcon from '@jamescoyle/vue-icon';
-import type {ModelViewerElement} from '@google/model-viewer';
+import SvgIcon from "@jamescoyle/vue-icon";
+import type { ModelViewerElement } from "@google/model-viewer";
 import Loading from "../misc/Loading.vue";
 import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
-import {defineAsyncComponent, ref} from "vue";
-import type {SelectionInfo} from "./selection";
+import { defineAsyncComponent, ref } from "vue";
+import type { SelectionInfo } from "./selection";
 
 const SelectionComponent = defineAsyncComponent({
   loader: () => import("./Selection.vue"),
-  loadingComponent: () => "Loading...",
+  loadingComponent: Loading,
   delay: 0,
 });
-let selectionComp = ref<InstanceType<typeof SelectionComponent> | null>(null);
+const selectionComp = ref<InstanceType<typeof SelectionComponent> | null>(null);
 
 const LicensesDialogContent = defineAsyncComponent({
   loader: () => import("./LicensesDialogContent.vue"),
@@ -43,7 +42,7 @@ const LicensesDialogContent = defineAsyncComponent({
   delay: 0,
 });
 
-let props = defineProps<{ viewer: InstanceType<typeof ModelViewerWrapper> | null }>();
+const props = defineProps<{ viewer: InstanceType<typeof ModelViewerWrapper> | null }>();
 const emit = defineEmits<{ findModel: [string] }>()
 
 let selection = ref<Array<SelectionInfo>>([]);

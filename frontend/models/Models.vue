@@ -4,14 +4,15 @@ import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
 import {Document, Mesh} from "@gltf-transform/core";
 import {extrasNameKey} from "../misc/gltf";
 import Model from "./Model.vue";
-import {inject, ref, type Ref} from "vue";
+import { inject, ref } from "vue";
+import { sceneDocumentKey } from "../injectionKeys";
 
 const props = defineProps<{ viewer: InstanceType<typeof ModelViewerWrapper> | null }>();
-const emit = defineEmits<{ removeModel: [string] }>()
+const emit = defineEmits<{ removeModel: [string] }>();
 
-let {sceneDocument} = inject<{ sceneDocument: Ref<Document> }>('sceneDocument')!!;
+const { sceneDocument } = inject(sceneDocumentKey)!;
 
-const expandedNames = ref<Array<string>>([]);
+const expandedNames = ref<string[]>([]);
 
 function meshesList(sceneDocument: Document): Array<Array<Mesh>> {
   // Grouped by shared name
@@ -44,7 +45,7 @@ defineExpose({findModel})
 
 <template>
   <v-expansion-panels v-for="meshes in meshesList(sceneDocument)" :key="meshes[0] ? meshName(meshes[0]) : 'unnamed'"
-                      v-model="expandedNames as any" multiple>
+                      v-model="expandedNames" multiple>
     <model :meshes="meshes" :viewer="props.viewer" @remove="meshes[0] ? onRemove(meshes[0]) : undefined"/>
   </v-expansion-panels>
 </template>

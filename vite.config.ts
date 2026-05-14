@@ -1,9 +1,7 @@
 import { fileURLToPath, URL } from "node:url";
 
 import { defineConfig } from "vite";
-// @ts-ignore
 import vue from "@vitejs/plugin-vue";
-// @ts-ignore
 import vueJsx from "@vitejs/plugin-vue-jsx";
 import { name, version } from "./package.json";
 import { execSync } from "child_process";
@@ -34,8 +32,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      // @ts-ignore
-      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@": fileURLToPath(new URL("./frontend", import.meta.url)),
     },
   },
   build: {

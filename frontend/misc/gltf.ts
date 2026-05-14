@@ -6,7 +6,6 @@ let io = new WebIO();
 export let extrasNameKey = "__cadquery_web_viewer_name";
 export let extrasNameValueHelpers = "__helpers";
 
-// @ts-expect-error
 let isSmallBuild = typeof __CADQUERY_WEB_VIEWER_SMALL_BUILD__ !== "undefined" && __CADQUERY_WEB_VIEWER_SMALL_BUILD__;
 
 /**

@@ -2,13 +2,12 @@
 import {ref} from "vue";
 import {VBtn, VNavigationDrawer, VToolbar, VToolbarItems} from "vuetify/lib/components/index.mjs";
 import {mdiChevronLeft, mdiChevronRight, mdiClose} from '@mdi/js'
-// @ts-expect-error
-import SvgIcon from '@jamescoyle/vue-icon';
+import SvgIcon from "@jamescoyle/vue-icon";
 
 const props = defineProps<{
-  openedInit: Boolean,
-  side: "left" | "right",
-  width: number
+  openedInit: boolean;
+  side: "left" | "right";
+  width: number;
 }>();
 
 let opened = ref(props.openedInit.valueOf());

@@ -1,8 +1,8 @@
 <script lang="ts" setup>
-import {inject, ref, type ShallowRef, watch} from "vue";
+import { inject, ref, watch } from "vue";
+import { disableTapKey, sceneDocumentKey } from "../injectionKeys";
 import {VBtn, VSelect, VTooltip} from "vuetify/lib/components/index.mjs";
-// @ts-expect-error
-import SvgIcon from '@jamescoyle/vue-icon';
+import SvgIcon from "@jamescoyle/vue-icon";
 import type {ModelViewerElement} from '@google/model-viewer';
 import type {ModelScene} from "@google/model-viewer/lib/three-components/ModelScene";
 import {mdiCubeOutline, mdiCursorDefaultClick, mdiFeatureSearch, mdiRuler} from '@mdi/js';
@@ -27,7 +27,7 @@ export type MObject3D = Mesh & {
 
 let props = defineProps<{ viewer: typeof ModelViewerWrapperT | null }>();
 let emit = defineEmits<{ findModel: [string] }>();
-let {setDisableTap} = inject<{ setDisableTap: (arg0: boolean) => void }>('disableTap')!!;
+const { setDisableTap } = inject(disableTapKey)!;
 let selectionEnabled = ref(false);
 let selected = defineModel<Array<SelectionInfo>>({default: []});
 let openNextSelection = ref([false, false]); // Second is whether selection was enabled before
@@ -292,7 +292,7 @@ let onViewerReady = (viewer: typeof ModelViewerWrapperT) => {
 if (isViewerReady(props.viewer)) onViewerReady(props.viewer);
 else watch(() => props.viewer, () => onViewerReady(props.viewer as any));
 
-let {sceneDocument} = inject<{ sceneDocument: ShallowRef<Document> }>('sceneDocument')!!;
+const { sceneDocument } = inject(sceneDocumentKey)!;
 let boundingBoxLines: { [points: string]: number } = {}
 
 function updateBoundingBox() {

@@ -1,6 +1,7 @@
 <script lang="ts" setup>
 import {settings} from "../misc/settings";
-import {inject, onUpdated, type Ref, ref, watch} from "vue";
+import { inject, onUpdated, type Ref, ref, watch } from "vue";
+import { disableTapKey } from "../injectionKeys";
 import {$renderer, $scene} from "@google/model-viewer/lib/model-viewer-base";
 import {$controls} from '@google/model-viewer/lib/features/controls.js';
 import {type SmoothControls} from '@google/model-viewer/lib/three-components/SmoothControls';
@@ -206,7 +207,7 @@ function entries(lines: { [id: number]: Line3DData }): [string, Line3DData][] {
 
 defineExpose({elem, onElemReady, scene, renderer, controls, addLine3D, removeLine3D, onProgress, setPosterText});
 
-let {disableTap} = inject<{ disableTap: Ref<boolean> }>('disableTap')!!;
+const { disableTap } = inject(disableTapKey)!;
 watch(disableTap, (newDisableTap) => {
   if (elem.value) elem.value.disableTap = newDisableTap;
 });
