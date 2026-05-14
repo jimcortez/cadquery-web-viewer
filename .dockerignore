@@ -1,0 +1,38 @@
+# VCS and editor
+.git
+.gitignore
+.cursor
+.idea
+.vscode
+*.iml
+
+# Node / frontend build artifacts (rebuilt in image)
+node_modules
+dist
+.parcel-cache
+parcel-bundle-reports
+
+# Python environments and caches
+.venv
+venv
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.python-version
+
+# Project artifacts not needed for image build
+export
+.cache
+cadquery_web_viewer/frontend
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Compose overrides (optional)
+docker-compose.override.yml
+
+# Agent / planning (large, irrelevant)
+.agents

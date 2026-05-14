@@ -12,9 +12,22 @@ from cadquery_web_viewer import show
 
 REMOTE_HOST = "localhost"
 REMOTE_PORT = 32323
+# Image tag used in the printed `docker run` hint (override when testing another tag).
+DOCKER_IMAGE = os.environ.get("CADQUERY_WEB_VIEWER_DOCKER_IMAGE", "cadquery-web-viewer:test")
+# Published container port (Flask default inside the image).
+CONTAINER_PORT = 32323
 
 
-def _server_command() -> str:
+def _docker_server_command() -> str:
+    return (
+        "docker run --rm --platform linux/amd64 "
+        f"-p {REMOTE_PORT}:{CONTAINER_PORT} "
+        "-e CADQUERY_WEB_VIEWER_HOST=0.0.0.0 "
+        f"{DOCKER_IMAGE}"
+    )
+
+
+def _cli_server_command() -> str:
     return f"cadquery-web-viewer --host {REMOTE_HOST} --port {REMOTE_PORT}"
 
 
@@ -22,11 +35,17 @@ def _wait_for_user_to_start_server() -> None:
     if "CI" in os.environ:
         print("Skipping interactive remote demo under CI.", file=sys.stderr)
         sys.exit(0)
-    cmd = _server_command()
+    docker_cmd = _docker_server_command()
+    cli_cmd = _cli_server_command()
     print()
-    print("In another terminal, start the viewer and API, then come back here.")
+    print("In another terminal, start the viewer and API using either option below, then come back here.")
     print()
-    print("  " + cmd)
+    print("Docker (from the repo root, after `docker build --platform linux/amd64 -t "
+        f"{DOCKER_IMAGE} .`):")
+    print(f"  {docker_cmd}")
+    print()
+    print("Command line (with cadquery-web-viewer on your PATH, e.g. after `uv sync` or `pip install`):")
+    print(f"  {cli_cmd}")
     print()
     input("Press Enter when the server is running... ")
     print()
