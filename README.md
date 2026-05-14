@@ -1,58 +1,101 @@
-# cadquery-web-viewer
+# CadQuery Web Viewer
 
-**cadquery-web-viewer** is a hard fork of [**Yet Another CAD Viewer**](https://github.com/yeicor-3d/yet-another-cad-viewer) (YACV): a web-based CAD and GLB viewer with a Python (`cadquery_web_viewer`) backend for live tessellation, hot reload, and static export. This repository continues the same MIT-licensed codebase under a new name and package layout while crediting the original project and its authors.
+**Preview CadQuery or build123d models in your browser** and refresh the view while you edit Python—without manually exporting meshes each time.
 
-Upstream reference: [yeicor-3d/yet-another-cad-viewer](https://github.com/yeicor-3d/yet-another-cad-viewer) — use that project’s issue tracker and releases if you need the original branding or PyPI package `yacv-server`.
+The API and packaging are meant to be a **mostly drop-in replacement** for [Yet Another CAD Viewer (YACV)](https://github.com/yeicor-3d/yet-another-cad-viewer). Renames and explicit `server_type` are covered in **Migrating from `yacv-server` / `yacv-viewer`** below; project history and upstream links are in **Special thanks** at the end of this file.
 
-## Features
+## Quick start
 
-- Cross-platform: works on any modern web browser.
-- Full [glTF 2.0](https://www.khronos.org/gltf/) and [model-viewer](https://modelviewer.dev/) capabilities (textures, PBR, AR, navigation).
-- Load multiple models, external URLs, and images as quads; clipping, transparency, edge/vertex styling, explode, topology picking, measurements.
-- Live updates while editing CAD in Python via the `cadquery-web-viewer` CLI and the `cadquery_web_viewer` import package.
-- Optional disk cache for uploaded GLBs and static deployment of the built UI plus `.glb` files.
+Requires **Python 3.12** (see `pyproject.toml`).
 
-## Install
+### Install the package
+
+Pick one approach. The `cadquery-web-viewer` command is registered by the package; you only get it on your shell **PATH** when you install into an active environment, use **pipx**, or use **`uv tool install`** (see below).
+
+**pip inside a virtual environment** (good when you import the library from the same project):
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install cadquery-web-viewer
 ```
 
-## Using the project as a **server**
+On Windows, activate with `.venv\Scripts\activate`. While the venv is active, run `cadquery-web-viewer` or `python -m cadquery_web_viewer`.
 
-Install the package (globally or in a virtual environment) and run the Flask app that serves the static UI and `/api` (SSE, uploads, tessellation from remote clients):
+**pipx** installs the app in an isolated environment and links the CLI into pipx’s binary directory so you can run it from any directory. If `cadquery-web-viewer` is not found, run `pipx ensurepath`, restart the shell, and confirm that directory is on your `PATH`.
+
+```bash
+pipx install cadquery-web-viewer
+```
+
+**uv** can do the same with **tools**: an isolated install plus executables on your user path (commonly `~/.local/bin`). Add that directory to `PATH` if your shell does not already.
+
+```bash
+uv tool install cadquery-web-viewer
+```
+
+To upgrade later: `pipx upgrade cadquery-web-viewer` or `uv tool upgrade cadquery-web-viewer`.
+
+**pip for the current user only** (global to your account, not system-wide): `pip install --user cadquery-web-viewer` then ensure your user script directory (for example `~/.local/bin` on many Unix setups) is on `PATH`.
+
+### Run from Python
+
+Pass any solid you already built (CadQuery or build123d). The library starts a small local web server, opens a tab, and shows your model:
+
+```python
+from cadquery_web_viewer import show
+
+show(my_solid)
+```
+
+By default the process **waits until you close the viewer tab** (same idea as closing the last connection to a live preview). That keeps one-shot scripts from exiting before you look at the model.
+
+## What you get
+
+- **Browser viewer** for 3D models: orbit, zoom, measurements, clipping, transparency, and related viewing tools.
+- **glTF 2.0 / GLB** — a standard mesh format many 3D tools understand. The UI is built around the web [model-viewer](https://modelviewer.dev/) component, so you get common material and lighting behavior in the browser.
+- **Live updates** while you change geometry in Python (the app keeps a channel open so the page can refresh when you publish again).
+- **Optional disk cache** for uploaded GLBs when you run the long-lived server (see flags below).
+
+## Run the app as a server
+
+Use this when you want the viewer listening continuously—for example another machine, or a workflow where Python scripts only *push* models to an already-running process.
+
+Start the Flask app (static UI plus HTTP API):
 
 ```bash
 cadquery-web-viewer --host localhost --port 32323
 ```
 
-Optional flags: `--cache-mode memory|disk`, `--cache-dir <path>` when using disk cache. Defaults are defined in the CLI only (no environment-variable overrides).
+**Cache** (separate idea): add `--cache-mode memory` or `--cache-mode disk`. With `disk`, set `--cache-dir` to the folder you want. Defaults live in the CLI; there are no environment-variable overrides for host, port, or cache mode.
 
-## Using the project as a **client** (from Python)
+## Call `show()` from Python
 
 ### Embedded viewer (default)
 
-`show()` starts an in-process HTTP server on a background thread (sharing one tessellation engine with Flask), opens your browser, waits for the first EventSource client, publishes your model, then **blocks until every `/api/updates` connection has closed** and shuts the server down (so one-shot scripts behave like the classic `yacv-server` workflow).
+`server_type="in-process"` is the default: one short-lived server thread, one browser session, shared tessellation with the full app.
 
 ```python
 from cadquery_web_viewer import show
 
-show(my_solid)  # server_type="in-process" by default
+show(my_solid)
 ```
 
-See [examples/in-process](examples/in-process) for a **local-buffer** script (`server_type="local"`) plus CI `export_all`; use default `show()` above for the embedded viewer.
+### Host, port, and timeouts
 
-Tune bind address, browser, and timeouts with `server_options` (plain dict), for example:
+`server_options` is an ordinary dict. Keys include `host`, `port`, and `wait_for_client_timeout` (seconds to wait for the browser to connect).
 
 ```python
 show(my_solid, server_options={"host": "127.0.0.1", "port": 32323, "wait_for_client_timeout": 180.0})
 ```
 
-For several `show()` calls in one script, pass `block_until_disconnect=False` on each call except the last so the embedded server stays up between calls.
+### Several `show()` calls in one script
 
-### Remote API (separate `cadquery-web-viewer` process)
+Pass `block_until_disconnect=False` on every call **except** the last one so the embedded server stays up between publishes.
 
-With a server already running, publish models over HTTP:
+### Remote server (Flask already running)
+
+First start `cadquery-web-viewer` in another terminal (or container). Then point `show()` at that process with `server_type="remote"` and a `remote_options` dict (`host`, `port`; optional `upload_timeout`, `post_timeout`).
 
 ```python
 from cadquery_web_viewer import show
@@ -60,76 +103,90 @@ from cadquery_web_viewer import show
 show(
     my_solid,
     server_type="remote",
-    remote_options={"host": "localhost", "port": 32323},  # optional keys: upload_timeout, post_timeout
+    remote_options={"host": "localhost", "port": 32323},
 )
 ```
 
-See [examples/remote](examples/remote) for a script that prints the server command to run in another window, then waits for you to press Enter before calling `show()`.
+The [`examples/remote/`](examples/remote/) script prints a command to start the server, then waits for you before calling `show()`.
 
-### Local buffer only (no HTTP, for `export_all` / CI)
+### Buffer only, then export GLBs (no browser)
+
+**Tessellation** here means turning CAD solids into triangle meshes (GLB) the viewer can draw.
+
+Use `server_type="local"` when you only want models in memory—typical for CI or headless pipelines:
 
 ```python
-from cadquery_web_viewer import show, export_all
+from cadquery_web_viewer import show
 
 show(my_solid, server_type="local")
+```
+
+Write everything currently in the buffer to a folder of `.glb` files:
+
+```python
+from cadquery_web_viewer import export_all
+
 export_all("./glbs")
 ```
 
-## Migrating from **yacv-server** / **yacv-viewer**
+## Examples in this repo
 
-| Before (upstream / old names) | After (this fork) |
-|------------------------------|-------------------|
-| PyPI / import `yacv_server` | Package / import `cadquery_web_viewer` |
-| CLI `yacv-server` | CLI `cadquery-web-viewer` (`python -m cadquery_web_viewer`) |
-| Implicit “talk to a running server” via environment | Explicit `server_type`: `"in-process"` (default), `"remote"`, or `"local"` |
-| Separate process required for browser preview | Default `show()` embeds Flask + blocks until the tab is closed |
-| Host / port via env | `server_options` / `remote_options` dicts on `show`, `remove`, `clear`, `show_all` |
+| Folder | Purpose |
+|--------|---------|
+| [`examples/in-process/`](examples/in-process/) | Full build123d sample, `show()` with optional textures; under `CI`, runs `export_all("export")`. |
+| [`examples/remote/`](examples/remote/) | Same style of model sent with `server_type="remote"`. |
 
-The `CadQueryWebViewer` engine may still honor optional styling-related environment variables (for example texture and default colors); connection and server behavior for `show()` are controlled through the keyword arguments above.
+## Migrating from `yacv-server` / `yacv-viewer`
 
-## Development
+| Before (upstream names) | After (this fork) |
+|-------------------------|-------------------|
+| PyPI / import `yacv_server` | `cadquery-web-viewer` / `cadquery_web_viewer` |
+| CLI `yacv-server` | `cadquery-web-viewer` or `python -m cadquery_web_viewer` |
+| Implicit “use whatever server env says” | Explicit `server_type`: `"in-process"` (default), `"remote"`, or `"local"` |
+| Separate process required for browser preview | Default `show()` embeds the server and blocks until preview connections close |
+| Host / port via environment | `server_options` / `remote_options` on `show`, `remove`, `clear`, `show_all` |
 
-Run the **Flask API** and the **Vite dev server** in two terminals so the UI hot-reloads while Python still serves `/api` (SSE, uploads, tessellation).
+Optional styling-related environment variables may still apply (for example default colors); **connection behavior** is controlled by the keyword arguments above.
 
-1. **Install dependencies** (Python 3.12 as in `pyproject.toml`, and Node for the frontend):
+## Develop the UI and Python backend
 
-   ```bash
-   uv sync
-   yarn install
-   ```
+Target stack: **Python 3.12** (see `pyproject.toml`) and **Node** for the Vite frontend.
 
-   If you do not use [uv](https://docs.astral.sh/uv/), use a virtual environment and `pip install -e .` from the repository root instead of `uv sync`.
+**1. Install dependencies**
 
-2. **Start the backend** (default `http://localhost:32323`):
+```bash
+uv sync
+yarn install
+```
 
-   ```bash
-   uv run cadquery-web-viewer
-   ```
+If you do not use [uv](https://docs.astral.sh/uv/), create a virtual environment and run `pip install -e .` from the repo root instead of `uv sync`.
 
-   Equivalent: `python -m cadquery_web_viewer` after the package is installed.
+**2. Start the Python API** (default `http://localhost:32323`)
 
-3. **Start the frontend** in another shell:
+```bash
+uv run cadquery-web-viewer
+```
 
-   ```bash
-   yarn dev
-   ```
+Same effect after install: `python -m cadquery_web_viewer`.
 
-   Open the URL Vite prints (by default `http://localhost:5173`). The viewer’s default preload discovers `/api/updates` on the same origin; when that is not the Flask app (as with Vite alone), it falls back to `http://localhost:32323`, so the UI and API stay in sync.
+**3. Start the frontend** (second terminal)
 
-To work on the backend only with a static UI, run `yarn install` if you have not yet, then `yarn build` once (writes `dist/` at the repository root), then start only `cadquery-web-viewer`. Flask serves that bundle when `cadquery_web_viewer/frontend` is missing (see `FRONTEND_BASE_PATH` in the package). A full `yarn build` needs devDependencies (including `generate-license-file`); installing with `NODE_ENV=production` omits those and the build will fail.
+```bash
+yarn dev
+```
 
-## Usage
+Open the URL Vite prints (often `http://localhost:5173`). The viewer tries the same origin for `/api/updates`; when the page is not served by Flask, it falls back to `http://localhost:32323` so the UI and API stay aligned.
 
-The [examples](examples) directory has a **local-buffer** script under `in-process/`, a **remote** client under `remote/`, and CI exports GLBs from the in-process example when `CI` is set.
-
-The original project’s public demos remain on GitHub Pages under the YACV name. After you publish this fork’s frontend, you can use query parameters with your own base URL (for example `?preload=…` for static GLBs).
+**Backend-only with a built UI:** run `yarn install` once, then `yarn build` (writes `dist/` at the repo root). Then run only `cadquery-web-viewer`. Flask serves that bundle when the packaged `frontend` tree is absent (see `FRONTEND_BASE_PATH` in the package). A full `yarn build` needs devDependencies (including `generate-license-file`). Installing with `NODE_ENV=production` skips those and the build will fail.
 
 ## Related projects
 
-- [cq-studio](https://github.com/ccazabon/cq-studio) — alternative file-watch workflow; historically related to the same viewer stack.
+- [cq-studio](https://github.com/ccazabon/cq-studio) — alternative file-watch workflow; related viewer history.
 - [build123d-docker](https://github.com/derhuerst/build123d-docker/pkgs/container/build123d) — containers for CAD tooling.
-- [OCP.wasm](https://github.com/yeicor/OCP.wasm/) — OpenCASCADE compiled for WebAssembly (related browser CAD stacks).
+- [OCP.wasm](https://github.com/yeicor/OCP.wasm/) — OpenCASCADE compiled for WebAssembly (another browser CAD direction).
 
-## License
+## Special thanks
 
-This project is released under the [MIT License](LICENSE), consistent with the upstream Yet Another CAD Viewer distribution. Third-party notices are collected under [assets/licenses.txt](assets/licenses.txt) as in the original project.
+[Yet Another CAD Viewer (YACV)](https://github.com/yeicor-3d/yet-another-cad-viewer) by Yeicor and contributors is the upstream project: a web-based CAD and GLB viewer with a Python backend for live tessellation, hot reload, and static export. This repository continues that MIT-licensed codebase as **cadquery-web-viewer** (import `cadquery_web_viewer`), with credit to the original authors. Use that repository for the legacy product name, the PyPI package `yacv-server`, and upstream issues and releases.
+
+[MIT License](LICENSE). Third-party notices: [assets/licenses.txt](assets/licenses.txt).
