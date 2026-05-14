@@ -6,7 +6,7 @@ The API and packaging are meant to be a **mostly drop-in replacement** for [Yet 
 
 ## Quick start
 
-Requires **Python 3.12** (see `pyproject.toml`).
+Requires **Python 3.10 through 3.12** (see `requires-python` in `pyproject.toml`).
 
 ### Install the package
 
@@ -191,7 +191,7 @@ Optional styling-related environment variables may still apply (for example defa
 
 ## Develop the UI and Python backend
 
-Target stack: **Python 3.12** (see `pyproject.toml`) and **Node** for the Vite frontend.
+Target stack: **Python 3.10–3.12** (see `pyproject.toml`) and **Node** for the Vite frontend.
 
 **1. Install dependencies**
 

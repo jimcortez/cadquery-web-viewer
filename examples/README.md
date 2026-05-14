@@ -1,6 +1,6 @@
 # cadquery-web-viewer examples
 
-Small scripts that assume the full **cadquery-web-viewer** repository (or an installed `cadquery-web-viewer` plus `build123d`) on Python 3.12.
+Small scripts that assume the full **cadquery-web-viewer** repository (or an installed `cadquery-web-viewer` plus `build123d`) on a supported Python version (see `requires-python` in `pyproject.toml`).
 
 ## Layout
 
