@@ -1,24 +1,26 @@
+from __future__ import annotations
+
 import base64
-import copy
 import inspect
 import os
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
 from io import BytesIO
-from typing import Optional, Dict, Union, Callable, List, Tuple, Any
+from pathlib import Path
+from typing import Any, Union
 
+# noinspection PyProtectedMember
+from build123d import Axis, Location, Shape, Vector
+from dataclasses_json import dataclass_json
 from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS_Shape
 from PIL import Image
-# noinspection PyProtectedMember
-from build123d import Shape, Axis, Location, Vector
-from dataclasses_json import dataclass_json
 
-from cadquery_web_viewer.cad import _hashcode, get_color, ColorTuple
-from cadquery_web_viewer.cad import get_shape, grab_all_cad, CADCoreLike, CADLike
+from cadquery_web_viewer.cad import CADCoreLike, CADLike, ColorTuple, _hashcode, get_color, get_shape, grab_all_cad
 from cadquery_web_viewer.gltf import get_version
 from cadquery_web_viewer.mylogger import logger
 from cadquery_web_viewer.pubsub import BufferedPubSub
@@ -30,34 +32,40 @@ from cadquery_web_viewer.tessellate import tessellate
 @dataclass
 class UpdatesApiData:
     """Data sent to the client through the updates API"""
+
     name: str
     """Name of the object. Should be unique unless you want to overwrite the previous object"""
     hash: str
     """Hash of the object, to detect changes without rebuilding the object"""
-    is_remove: Optional[bool]
+    is_remove: bool | None = None
     """Whether to remove the object from the scene. If None, this is a shutdown request"""
 
 
 CadQueryWebViewerObject = Union[bytes, CADCoreLike]
 
 
-class UpdatesApiFullData(UpdatesApiData):
-    obj: CadQueryWebViewerObject
-    """The OCCT object (not serialized)"""
-    kwargs: Optional[Dict[str, any]]
-    """The show_object options, if any (not serialized)"""
+@dataclass
+class UpdatesApiFullData:
+    """Wire metadata plus in-process payload; ``obj`` and ``kwargs`` are not serialized."""
 
-    def __init__(self, obj: CadQueryWebViewerObject, name: str, _hash: str, is_remove: Optional[bool] = False,
-                 kwargs: Optional[Dict[str, any]] = None):
-        self.name = name
-        self.hash = _hash
-        self.is_remove = is_remove
-        self.obj = obj
-        self.kwargs = kwargs
+    meta: UpdatesApiData
+    obj: CadQueryWebViewerObject
+    kwargs: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def name(self) -> str:
+        return self.meta.name
+
+    @property
+    def hash(self) -> str:
+        return self.meta.hash
+
+    @property
+    def is_remove(self) -> bool | None:
+        return self.meta.is_remove
 
     def to_json(self) -> str:
-        # noinspection PyUnresolvedReferences
-        return super().to_json()
+        return self.meta.to_json()
 
 
 class CadQueryWebViewerProtocol(Enum):
@@ -74,16 +82,16 @@ class CadQueryWebViewer:
     # Startup
     protocol: CadQueryWebViewerProtocol
     """The protocol used by the server. Defaults to HTTP, but can be set to STDERR for Pyodide support."""
-    server_thread: Optional[Any]
+    server_thread: Any | None
     """Reserved; embedded HTTP server is no longer started from ``CadQueryWebViewer``."""
-    server: Optional[Any]
+    server: Any | None
     startup_complete: threading.Event
     """Event to signal when the server has started"""
 
     # Running
     show_events: BufferedPubSub[UpdatesApiFullData]
     """PubSub for show events (objects to be shown in/removed from the scene)"""
-    build_events: Dict[str, BufferedPubSub[bytes]]
+    build_events: dict[str, BufferedPubSub[bytes]]
     """PubSub for build events (objects that were built)"""
     build_events_lock: threading.Lock
     """Lock to ensure that objects are only built once"""
@@ -101,7 +109,7 @@ class CadQueryWebViewer:
     _sse_idle_cv: threading.Condition
     """Notified when ``_sse_stream_count`` drops to zero."""
 
-    texture: Optional[Tuple[bytes, str]]
+    texture: tuple[bytes, str] | None
     """Default texture to use for model faces, in (data, mimetype) format.
     If left as None, no texture will be used.
     
@@ -109,7 +117,7 @@ class CadQueryWebViewer:
     The <uri> can be file:<path> or data:<mime>;base64,<data> where <mime> is the mime type and 
     <data> is the base64 encoded image."""
 
-    color_faces: Optional[ColorTuple]
+    color_faces: ColorTuple | None
     """Overrides the default color to use for model faces. Applies even if a texture is used. 
     
     You can use `show(..., color_faces=...)` or the standard way of setting colors for build123d/cadquery objects to 
@@ -118,7 +126,7 @@ class CadQueryWebViewer:
     It can be set with the CADQUERY_WEB_VIEWER_COLOR_FACES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
-    color_edges: Optional[ColorTuple]
+    color_edges: ColorTuple | None
     """Overrides the default color to use for model edges. 
     
     You can use `show(..., color_edges=...) or the standard way of setting colors for build123d/cadquery objects to
@@ -127,7 +135,7 @@ class CadQueryWebViewer:
     It can be set with the CADQUERY_WEB_VIEWER_COLOR_EDGES=<color> environment variable, where <color> is a color
     in the hexadecimal format #RRGGBB or #RRGGBBAA."""
 
-    color_vertices: Optional[ColorTuple]
+    color_vertices: ColorTuple | None
     """Overrides the default color to use for model vertices.
     
     You can use `show(..., color_vertices=...)` or the standard way of setting colors for build123d/cadquery objects to
@@ -190,7 +198,7 @@ class CadQueryWebViewer:
                 self._sse_stream_count = 0
             self._sse_idle_cv.notify_all()
 
-    def wait_until_no_sse_streams(self, timeout: Optional[float] = None) -> bool:
+    def wait_until_no_sse_streams(self, timeout: float | None = None) -> bool:
         """
         Block until there are no active SSE streams.
 
@@ -223,7 +231,12 @@ class CadQueryWebViewer:
                 msg += f'{base64.b64encode(glb).decode("utf-8")}'
             print(msg, file=sys.stderr, flush=True)
 
-    def show(self, *objs: List[CadQueryWebViewerObject], names: Optional[Union[str, List[str]]] = None, **kwargs):
+    def show(
+        self,
+        *objs: CadQueryWebViewerObject,
+        names: str | list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
         """
         Shows the given CAD objects in the frontend. The objects will be tessellated and converted to GLTF. Optionally,
         the following keyword arguments can be used:
@@ -247,7 +260,8 @@ class CadQueryWebViewer:
         names = names or [_find_var_name(obj) for obj in objs]
         if isinstance(names, str):
             names = [names]
-        assert len(names) == len(objs), 'Number of names must match the number of objects'
+        if len(names) != len(objs):
+            raise ValueError("Number of names must match the number of objects")
         for color_name in ('color_faces', 'color_edges', 'color_vertices'):
             if color_name in kwargs:
                 kwargs[color_name] = get_color(kwargs[color_name]) or _read_color(kwargs[color_name])
@@ -274,7 +288,11 @@ class CadQueryWebViewer:
             if not isinstance(obj, bytes):
                 obj = _preprocess_cad(obj, **_kwargs)
             _hash = _hashcode(obj, **_kwargs)
-            event = UpdatesApiFullData(name=name, _hash=_hash, obj=obj, kwargs=_kwargs or {})
+            event = UpdatesApiFullData(
+                UpdatesApiData(name=name, hash=_hash, is_remove=False),
+                obj,
+                _kwargs or {},
+            )
             self._show_event(event)
 
         logger.info('show %s took %.3f seconds', names, time.time() - start)
@@ -284,10 +302,10 @@ class CadQueryWebViewer:
         name: str,
         content_hash: str,
         glb: bytes,
-        kwargs: Optional[Dict[str, any]] = None,
+        kwargs: dict[str, Any] | None = None,
         *,
         auto_clear: bool = False,
-        except_names: Optional[List[str]] = None,
+        except_names: list[str] | None = None,
     ) -> None:
         """Register a ready-made GLB (e.g. from HTTP upload) like ``show`` for bytes, without tessellation."""
         kwargs = kwargs or {}
@@ -298,7 +316,11 @@ class CadQueryWebViewer:
                 self.show_events.delete(old_event)
                 if name in self.build_events:
                     del self.build_events[name]
-        event = UpdatesApiFullData(name=name, _hash=content_hash, obj=glb, kwargs=kwargs)
+        event = UpdatesApiFullData(
+            UpdatesApiData(name=name, hash=content_hash, is_remove=False),
+            glb,
+            kwargs or {},
+        )
         self._show_event(event)
 
     def show_cad_all(self, **kwargs):
@@ -320,11 +342,15 @@ class CadQueryWebViewer:
                     del self.build_events[name]
 
             # Publish the remove event
-            show_event = copy.copy(show_events[-1])
-            show_event.is_remove = True
-            self._show_event(show_event)
+            last = show_events[-1]
+            remove_event = UpdatesApiFullData(
+                replace(last.meta, is_remove=True),
+                last.obj,
+                last.kwargs,
+            )
+            self._show_event(remove_event)
 
-    def clear(self, except_names: List[str] = None):
+    def clear(self, except_names: list[str] | None = None) -> None:
         """Clears all previously-shown objects from the scene"""
         if except_names is None:
             except_names = []
@@ -332,7 +358,7 @@ class CadQueryWebViewer:
             if event.name not in except_names:
                 self.remove(event.name)
 
-    def shown_object_names(self, apply_removes: bool = True) -> List[str]:
+    def shown_object_names(self, apply_removes: bool = True) -> list[str]:
         """Returns the names of all objects that have been shown"""
         res = set()
         for obj in self.show_events.buffer():
@@ -342,7 +368,7 @@ class CadQueryWebViewer:
                 res.discard(obj.name)
         return list(res)
 
-    def _show_events(self, name: str, apply_removes: bool = True) -> List[UpdatesApiFullData]:
+    def _show_events(self, name: str, apply_removes: bool = True) -> list[UpdatesApiFullData]:
         """Returns the show events with the given name"""
         res = []
         for event in self.show_events.buffer():
@@ -356,7 +382,7 @@ class CadQueryWebViewer:
                             res.remove(old_event)
         return res
 
-    def export(self, name: str) -> Optional[Tuple[bytes, str]]:
+    def export(self, name: str) -> tuple[bytes, str] | None:
         """Export the given previously-shown object to a single GLB blob, building it if necessary."""
         start = time.time()
 
@@ -406,23 +432,27 @@ class CadQueryWebViewer:
                 # noinspection PyInconsistentReturns
                 subscription.close()
 
-    def export_all(self, folder: str,
-                   export_filter: Callable[[str, Optional[CADCoreLike]], bool] = lambda name, obj: True):
+    def export_all(
+        self,
+        folder: str,
+        export_filter: Callable[[str, CADCoreLike | None], bool] = lambda name, obj: True,
+    ) -> None:
         """Export all previously-shown objects to GLB files in the given folder"""
-        os.makedirs(folder, exist_ok=True)
+        out_dir = Path(folder)
+        out_dir.mkdir(parents=True, exist_ok=True)
         for name in self.shown_object_names():
             if export_filter(name, self._show_events(name)[-1].obj):
-                with open(os.path.join(folder, f'{name}.glb'), 'wb') as f:
-                    f.write(self.export(name)[0])
+                exp = self.export(name)
+                if exp is not None:
+                    (out_dir / f"{name}.glb").write_bytes(exp[0])
 
 
-def _read_texture_uri(uri: str) -> Optional[Tuple[bytes, str]]:
+def _read_texture_uri(uri: str | None) -> tuple[bytes, str] | None:
     if uri is None:
         return None
     if uri.startswith("file:"):
-        path = uri[len("file:"):]
-        with open(path, 'rb') as f:
-            data = f.read()
+        path = Path(uri[len("file:") :])
+        data = path.read_bytes()
         buf = BytesIO(data)
         img = Image.open(buf)
         mtype = img.get_format_mimetype()
@@ -436,7 +466,7 @@ def _read_texture_uri(uri: str) -> Optional[Tuple[bytes, str]]:
     return None
 
 
-def _read_color(color: str) -> Optional[ColorTuple]:
+def _read_color(color: str) -> ColorTuple | None:
     """Reads a color from a string in the format #RRGGBB or #RRGGBBAA"""
     if color is None:
         return None
@@ -471,7 +501,7 @@ def _preprocess_cad(obj: CADLike, **kwargs) -> CADCoreLike:
 _obj_name_counts = {}
 
 
-def _find_var_name(obj: any, avoid_levels: int = 2) -> str:
+def _find_var_name(obj: Any, avoid_levels: int = 2) -> str:
     """A hacky way to get a stable name for an object that may change over time"""
 
     # Build123d objects have a "label" property, CadQuery Assembly's have "name"
@@ -479,7 +509,7 @@ def _find_var_name(obj: any, avoid_levels: int = 2) -> str:
         if hasattr(obj, f):
             v = getattr(obj, f)
             if v != '':
-                return v;
+                return v
 
     # Otherwise walk up our stack to see if there's a local variable that points to it
     obj_shape = get_shape(obj, error=False) or obj
@@ -496,10 +526,10 @@ def _find_var_name(obj: any, avoid_levels: int = 2) -> str:
 
 
 def prepare_glb_upload_batch(
-    *objs,
-    names: Optional[Union[str, List[str]]] = None,
-    **kwargs,
-) -> Tuple[List[Tuple[str, bytes, str, Dict[str, Any]]], List[str]]:
+    *objs: Any,
+    names: str | list[str] | None = None,
+    **kwargs: Any,
+) -> tuple[list[tuple[str, bytes, str, dict[str, Any]]], list[str]]:
     """
     Tessellate like ``CadQueryWebViewer.show`` on a scratch instance and return ``(name, glb, hash, kwargs)`` per object.
     The second return value is the resolved name list in the same order as the payloads.
@@ -509,7 +539,7 @@ def prepare_glb_upload_batch(
         resolved = [resolved]
     tmp = CadQueryWebViewer()
     tmp.show(*objs, names=resolved, **kwargs)
-    payloads: List[Tuple[str, bytes, str, Dict[str, Any]]] = []
+    payloads: list[tuple[str, bytes, str, dict[str, Any]]] = []
     for name in resolved:
         exp = tmp.export(name)
         if exp is None:

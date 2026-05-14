@@ -1,12 +1,11 @@
 import os
-from typing import Union, Dict
 
 from build123d import *
 
 ASSETS_DIR = os.getenv('ASSETS_DIR', os.path.join(os.path.dirname(__file__), '..', 'assets'))
 
 
-def build_logo(text: bool = True) -> Dict[str, Union[Compound, Location, str]]:
+def build_logo(text: bool = True) -> dict[str, Compound | Location | str]:
     """Builds the CAD part of the logo"""
     with BuildPart(Plane.XY.offset(50)) as logo_obj:
         Box(22, 40, 30)
@@ -50,7 +49,7 @@ if __name__ == "__main__":
 
     testing_server = os.getenv('TESTING_SERVER') is not None
 
-    from cadquery_web_viewer import export_all, show, image_to_gltf
+    from cadquery_web_viewer import export_all, image_to_gltf, show
 
     # Build the CAD part of the logo
     logo = build_logo()

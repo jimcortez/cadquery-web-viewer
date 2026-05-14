@@ -4,22 +4,22 @@ Utilities to work with CAD objects
 import hashlib
 import io
 import re
-from typing import Optional, Union, Tuple
+from typing import Any, Union
 
+from build123d import Color, Compound
 from OCP.TopExp import TopExp
 from OCP.TopLoc import TopLoc_Location
-from OCP.TopTools import TopTools_IndexedMapOfShape
 from OCP.TopoDS import TopoDS_Shape
-from build123d import Compound, Color
+from OCP.TopTools import TopTools_IndexedMapOfShape
 
 from cadquery_web_viewer.gltf import GLTFMgr
 
 CADCoreLike = Union[TopoDS_Shape, TopLoc_Location]  # Faces, Edges, Vertices and Locations for now
-CADLike = Union[CADCoreLike, any]  # build123d and cadquery types
-ColorTuple = Tuple[float, float, float, float]
+CADLike = Union[CADCoreLike, Any]  # build123d and cadquery types
+ColorTuple = tuple[float, float, float, float]
 
 
-def get_color(obj: any) -> Optional[ColorTuple]:
+def get_color(obj: Any) -> ColorTuple | None:
     """Get color from a CAD Object or any other color-like object"""
     if 'color' in dir(obj):
         obj = obj.color
@@ -30,13 +30,13 @@ def get_color(obj: any) -> Optional[ColorTuple]:
         elif len(obj) == 4:
             c = obj
         # noinspection PyTypeChecker
-        return [min(max(float(x), 0), 1) for x in c]
+        return tuple(min(max(float(x), 0), 1) for x in c)
     if isinstance(obj, Color):
         return obj.to_tuple()
     return None
 
 
-def get_shape(obj: CADLike, error: bool = True) -> Optional[CADCoreLike]:
+def get_shape(obj: CADLike, error: bool = True) -> CADCoreLike | None:
     """ Get the shape of a CAD-like object """
 
     # Try to grab a shape if a different type of object was passed
@@ -90,7 +90,7 @@ def get_shape(obj: CADLike, error: bool = True) -> Optional[CADCoreLike]:
         return None
 
 
-def grab_all_cad() -> set[Tuple[str, CADCoreLike]]:
+def grab_all_cad() -> set[tuple[str, CADCoreLike]]:
     """ Grab all shapes by inspecting the stack """
     import inspect
     stack = inspect.stack()
@@ -103,16 +103,15 @@ def grab_all_cad() -> set[Tuple[str, CADCoreLike]]:
     return shapes
 
 
-def image_to_gltf(source: str | bytes, center: any, width: Optional[float] = None, height: Optional[float] = None,
-                  name: Optional[str] = None, save_mime: str = 'image/jpeg', power_of_two: bool = True) \
-        -> Tuple[bytes, str]:
+def image_to_gltf(source: str | bytes, center: Any, width: float | None = None, height: float | None = None,
+                  name: str | None = None, save_mime: str = 'image/jpeg', power_of_two: bool = True) \
+        -> tuple[bytes, str]:
     """Convert an image to a GLTF CAD object."""
-    from PIL import Image
     import io
     import os
-    from build123d import Plane
-    from build123d import Location
-    from build123d import Vector
+
+    from build123d import Location, Plane, Vector
+    from PIL import Image
 
     # Handle arguments
     if name is None:
@@ -183,7 +182,7 @@ def image_to_gltf(source: str | bytes, center: any, width: Optional[float] = Non
     return b''.join(mgr.build().save_to_bytes()), name
 
 
-def _hashcode(obj: Union[bytes, CADCoreLike], **extras) -> str:
+def _hashcode(obj: bytes | CADCoreLike, **extras) -> str:
     """Utility to compute the STABLE hash code of a shape"""
     # NOTE: obj.HashCode(MAX_HASH_CODE) is not stable across different runs of the same program
     # This is best-effort and not guaranteed to be unique

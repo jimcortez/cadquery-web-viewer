@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import sys
-from typing import Any, Callable, Literal, Optional, Union
+from collections.abc import Callable
+from typing import Any, Literal
 
 from cadquery_web_viewer.cad import grab_all_cad, image_to_gltf
 from cadquery_web_viewer.engine import CadQueryWebViewer, CadQueryWebViewerProtocol
+from cadquery_web_viewer.options_types import RemoteOptions, ServerOptions
 
 ServerType = Literal["in-process", "remote", "local"]
 
@@ -22,7 +24,7 @@ def _stderr_like() -> bool:
 
 def _in_process_session(
     *,
-    server_options: Optional[dict],
+    server_options: ServerOptions | None,
     block_until_disconnect: bool,
     body: Callable[[], None],
 ) -> None:
@@ -43,10 +45,10 @@ def _in_process_session(
 
 def show(
     *objs: Any,
-    names: Optional[Union[str, list[str]]] = None,
+    names: str | list[str] | None = None,
     server_type: ServerType = "in-process",
-    remote_options: Optional[dict] = None,
-    server_options: Optional[dict] = None,
+    remote_options: RemoteOptions | None = None,
+    server_options: ServerOptions | None = None,
     block_until_disconnect: bool = True,
     **kwargs: Any,
 ) -> None:
@@ -70,8 +72,8 @@ def show(
 
 def show_all(
     server_type: ServerType = "in-process",
-    remote_options: Optional[dict] = None,
-    server_options: Optional[dict] = None,
+    remote_options: RemoteOptions | None = None,
+    server_options: ServerOptions | None = None,
     block_until_disconnect: bool = True,
     **kwargs: Any,
 ) -> None:
@@ -90,8 +92,8 @@ def show_all(
 def remove(
     name: str,
     server_type: ServerType = "in-process",
-    remote_options: Optional[dict] = None,
-    server_options: Optional[dict] = None,
+    remote_options: RemoteOptions | None = None,
+    server_options: ServerOptions | None = None,
     block_until_disconnect: bool = True,
 ) -> None:
     if _stderr_like():
@@ -114,8 +116,8 @@ def remove(
 
 def clear(
     server_type: ServerType = "in-process",
-    remote_options: Optional[dict] = None,
-    server_options: Optional[dict] = None,
+    remote_options: RemoteOptions | None = None,
+    server_options: ServerOptions | None = None,
     block_until_disconnect: bool = True,
 ) -> None:
     if _stderr_like():
@@ -139,6 +141,8 @@ def clear(
 __all__ = [
     "CadQueryWebViewer",
     "CadQueryWebViewerProtocol",
+    "RemoteOptions",
+    "ServerOptions",
     "ServerType",
     "clear",
     "export_all",

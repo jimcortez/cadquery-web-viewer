@@ -3,16 +3,15 @@
 from __future__ import annotations
 
 import json
-import os
-from typing import Optional
+from pathlib import Path
 from urllib.parse import unquote
 
 from flask import Blueprint, Flask, Response, abort, request, send_from_directory, stream_with_context
 
+from cadquery_web_viewer.engine import CadQueryWebViewer
 from cadquery_web_viewer.glb_cache import GlbDiskCache
 from cadquery_web_viewer.myhttp import FRONTEND_BASE_PATH
 from cadquery_web_viewer.mylogger import logger
-from cadquery_web_viewer.engine import CadQueryWebViewer
 
 
 def _cors(resp: Response) -> Response:
@@ -24,8 +23,8 @@ def _cors(resp: Response) -> Response:
 
 def create_app(
     cache_mode: str = "memory",
-    cache_dir: Optional[str] = None,
-    engine: Optional[CadQueryWebViewer] = None,
+    cache_dir: str | None = None,
+    engine: CadQueryWebViewer | None = None,
 ) -> Flask:
     """
     :param cache_mode: ``memory`` or ``disk``.
@@ -37,8 +36,8 @@ def create_app(
         raise ValueError("cache_mode must be 'memory' or 'disk'")
     if cache_mode == "disk":
         if not cache_dir:
-            cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "cadquery-web-viewer", "glb")
-        os.makedirs(cache_dir, exist_ok=True)
+            cache_dir = str(Path("~/.cache/cadquery-web-viewer/glb").expanduser())
+        Path(cache_dir).mkdir(parents=True, exist_ok=True)
         disk_cache = GlbDiskCache(cache_dir)
         logger.info("GLB disk cache enabled at %s", cache_dir)
     else:
@@ -49,8 +48,7 @@ def create_app(
     if disk_cache is not None:
         for entry in disk_cache.list_entries():
             try:
-                with open(entry.glb_path, "rb") as f:
-                    glb = f.read()
+                glb = Path(entry.glb_path).read_bytes()
                 with engine.build_events_lock:
                     engine.ingest_prebuilt_glb(
                         entry.name,
@@ -187,10 +185,16 @@ def create_app(
 
     fe = FRONTEND_BASE_PATH
 
-    def _safe_join(root: str, rel: str) -> Optional[str]:
-        full = os.path.realpath(os.path.join(root, rel))
-        root_r = os.path.realpath(root)
-        if not full.startswith(root_r + os.sep) and full != root_r:
+    def _safe_join(root: str, rel: str) -> Path | None:
+        root_p = Path(root).resolve()
+        try:
+            full = (root_p / rel).resolve()
+        except OSError:
+            return None
+        try:
+            if not full.is_relative_to(root_p):
+                return None
+        except ValueError:
             return None
         return full
 
@@ -207,10 +211,10 @@ def create_app(
         if filename.startswith("api/"):
             abort(404)
         full = _safe_join(fe, filename)
-        if full and os.path.isfile(full):
+        if full is not None and full.is_file():
             return send_from_directory(fe, filename)
-        idx = os.path.join(fe, "index.html")
-        if os.path.isfile(idx):
+        idx = Path(fe) / "index.html"
+        if idx.is_file():
             return send_from_directory(fe, "index.html")
         abort(404)
 

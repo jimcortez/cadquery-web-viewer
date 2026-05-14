@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import queue
 import threading
-from typing import List, TypeVar, Generic, Generator
+from collections.abc import Generator
+from typing import Generic, TypeVar
 
 from cadquery_web_viewer.mylogger import logger
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 _end_of_queue = object()
 
@@ -12,9 +15,9 @@ _end_of_queue = object()
 class BufferedPubSub(Generic[T]):
     """A simple implementation of publish-subscribe pattern using threading and buffering all previous events"""
 
-    _buffer: List[T]
+    _buffer: list[T]
     _buffer_lock: threading.Lock
-    _subscribers: List[queue.Queue[T]]
+    _subscribers: list[queue.Queue[T]]
     _subscribers_lock: threading.Lock
     max_buffer_size: int
 
@@ -39,7 +42,7 @@ class BufferedPubSub(Generic[T]):
         q = queue.Queue()
         with self._subscribers_lock:
             self._subscribers.append(q)
-        logger.debug(f"Subscribed to %s (%d subscribers)", self, len(self._subscribers))
+        logger.debug("Subscribed to %s (%d subscribers)", self, len(self._subscribers))
         if include_buffered:
             with self._buffer_lock:
                 for event in self._buffer:
@@ -52,10 +55,14 @@ class BufferedPubSub(Generic[T]):
         """Unsubscribes from events"""
         with self._subscribers_lock:
             self._subscribers.remove(q)
-        logger.debug(f"Unsubscribed from %s (%d subscribers)", self, len(self._subscribers))
+        logger.debug("Unsubscribed from %s (%d subscribers)", self, len(self._subscribers))
 
-    def subscribe(self, include_buffered: bool = True, include_future: bool = True,
-                  yield_timeout: float | None = 0.0) -> Generator[T, None, None]:
+    def subscribe(
+        self,
+        include_buffered: bool = True,
+        include_future: bool = True,
+        yield_timeout: float | None = 0.0,
+    ) -> Generator[T | None, None, None]:
         """Subscribes to events as a generator that yields events and automatically unsubscribes"""
         q = self._subscribe(include_buffered, include_future)
         try:
@@ -71,7 +78,7 @@ class BufferedPubSub(Generic[T]):
         finally:  # When aclose() is called
             self._unsubscribe(q)
 
-    def buffer(self) -> List[T]:
+    def buffer(self) -> list[T]:
         """Returns a shallow copy of the list of buffered events"""
         with self._buffer_lock:
             return self._buffer[:]

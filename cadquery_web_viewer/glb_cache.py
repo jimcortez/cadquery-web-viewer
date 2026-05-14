@@ -8,7 +8,8 @@ import os
 import tempfile
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any
 
 from cadquery_web_viewer.mylogger import logger
 
@@ -25,7 +26,7 @@ def entry_id_for_name(name: str) -> str:
 class DiskCacheEntry:
     name: str
     content_hash: str
-    kwargs: Dict[str, Any]
+    kwargs: dict[str, Any]
     glb_path: str
     mtime: float
 
@@ -33,17 +34,17 @@ class DiskCacheEntry:
 class GlbDiskCache:
     """Stores one GLB + JSON sidecar per object name under a fixed directory."""
 
-    def __init__(self, cache_dir: str):
-        self.cache_dir = cache_dir
+    def __init__(self, cache_dir: str | Path) -> None:
+        self.cache_dir = Path(cache_dir)
         self._lock = threading.Lock()
-        os.makedirs(self.cache_dir, exist_ok=True)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def _paths(self, name: str) -> Tuple[str, str]:
+    def _paths(self, name: str) -> tuple[Path, Path]:
         eid = entry_id_for_name(name)
-        base = os.path.join(self.cache_dir, eid)
-        return base + GLB_SUFFIX, base + META_SUFFIX
+        base = self.cache_dir / eid
+        return base.with_suffix(GLB_SUFFIX), base.with_suffix(META_SUFFIX)
 
-    def write(self, name: str, content_hash: str, glb: bytes, kwargs: Optional[Dict[str, Any]] = None) -> None:
+    def write(self, name: str, content_hash: str, glb: bytes, kwargs: dict[str, Any] | None = None) -> None:
         kwargs = kwargs or {}
         glb_path, meta_path = self._paths(name)
         meta = {
@@ -53,26 +54,27 @@ class GlbDiskCache:
             "kwargs": _json_safe_kwargs(kwargs),
         }
         meta_bytes = json.dumps(meta, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        cache_dir_str = str(self.cache_dir)
         with self._lock:
-            fd, tmp_glb = tempfile.mkstemp(suffix=".glb.tmp", dir=self.cache_dir)
+            fd, tmp_glb = tempfile.mkstemp(suffix=".glb.tmp", dir=cache_dir_str)
             os.close(fd)
+            tmp_glb_path = Path(tmp_glb)
             try:
-                with open(tmp_glb, "wb") as f:
-                    f.write(glb)
+                tmp_glb_path.write_bytes(glb)
                 os.replace(tmp_glb, glb_path)
-            except BaseException:
-                if os.path.exists(tmp_glb):
-                    os.unlink(tmp_glb)
+            except Exception:
+                if tmp_glb_path.exists():
+                    tmp_glb_path.unlink(missing_ok=True)
                 raise
-            fd, tmp_meta = tempfile.mkstemp(suffix=".meta.json.tmp", dir=self.cache_dir)
+            fd, tmp_meta = tempfile.mkstemp(suffix=".meta.json.tmp", dir=cache_dir_str)
             os.close(fd)
+            tmp_meta_path = Path(tmp_meta)
             try:
-                with open(tmp_meta, "wb") as f:
-                    f.write(meta_bytes)
+                tmp_meta_path.write_bytes(meta_bytes)
                 os.replace(tmp_meta, meta_path)
-            except BaseException:
-                if os.path.exists(tmp_meta):
-                    os.unlink(tmp_meta)
+            except Exception:
+                if tmp_meta_path.exists():
+                    tmp_meta_path.unlink(missing_ok=True)
                 raise
 
     def delete(self, name: str) -> None:
@@ -80,52 +82,49 @@ class GlbDiskCache:
         with self._lock:
             for p in (glb_path, meta_path):
                 try:
-                    if os.path.isfile(p):
-                        os.unlink(p)
+                    if p.is_file():
+                        p.unlink()
                 except OSError as e:
                     logger.warning("Could not delete cache file %s: %s", p, e)
 
     def clear(self) -> None:
         with self._lock:
-            if not os.path.isdir(self.cache_dir):
+            if not self.cache_dir.is_dir():
                 return
-            for fn in os.listdir(self.cache_dir):
-                if fn.endswith(GLB_SUFFIX) or fn.endswith(META_SUFFIX):
+            for p in self.cache_dir.iterdir():
+                if p.suffix == ".glb" or p.name.endswith(META_SUFFIX):
                     try:
-                        os.unlink(os.path.join(self.cache_dir, fn))
+                        p.unlink()
                     except OSError as e:
-                        logger.warning("Could not delete %s: %s", fn, e)
+                        logger.warning("Could not delete %s: %s", p, e)
 
-    def list_entries(self) -> List[DiskCacheEntry]:
+    def list_entries(self) -> list[DiskCacheEntry]:
         """Return all valid cache entries sorted by GLB mtime (oldest first)."""
-        entries: List[DiskCacheEntry] = []
-        if not os.path.isdir(self.cache_dir):
+        entries: list[DiskCacheEntry] = []
+        if not self.cache_dir.is_dir():
             return entries
-        for fn in os.listdir(self.cache_dir):
-            if not fn.endswith(META_SUFFIX):
+        for meta_path in self.cache_dir.iterdir():
+            if not meta_path.name.endswith(META_SUFFIX):
                 continue
-            base = fn[: -len(META_SUFFIX)]
-            glb_fn = base + GLB_SUFFIX
-            glb_path = os.path.join(self.cache_dir, glb_fn)
-            meta_path = os.path.join(self.cache_dir, fn)
-            if not os.path.isfile(glb_path) or not os.path.isfile(meta_path):
+            base = meta_path.name[: -len(META_SUFFIX)]
+            glb_path = self.cache_dir / (base + GLB_SUFFIX)
+            if not glb_path.is_file() or not meta_path.is_file():
                 continue
             try:
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    meta = json.load(f)
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
                 if meta.get("schema") != SCHEMA_VERSION:
                     logger.warning("Skipping unknown cache schema in %s", meta_path)
                     continue
                 name = meta["name"]
                 content_hash = meta["hash"]
                 kwargs = meta.get("kwargs") or {}
-                mtime = os.path.getmtime(glb_path)
+                mtime = glb_path.stat().st_mtime
                 entries.append(
                     DiskCacheEntry(
                         name=name,
                         content_hash=content_hash,
                         kwargs=kwargs,
-                        glb_path=glb_path,
+                        glb_path=str(glb_path),
                         mtime=mtime,
                     )
                 )
@@ -134,18 +133,17 @@ class GlbDiskCache:
         entries.sort(key=lambda e: e.mtime)
         return entries
 
-    def read_glb(self, name: str) -> Optional[bytes]:
+    def read_glb(self, name: str) -> bytes | None:
         glb_path, _ = self._paths(name)
         try:
-            with open(glb_path, "rb") as f:
-                return f.read()
+            return glb_path.read_bytes()
         except OSError:
             return None
 
 
-def _json_safe_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
+def _json_safe_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     """Strip non-JSON-serializable values from tessellation kwargs for disk cache."""
-    safe: Dict[str, Any] = {}
+    safe: dict[str, Any] = {}
     for k, v in kwargs.items():
         if k == "texture" and v is not None:
             continue

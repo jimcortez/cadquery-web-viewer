@@ -4,20 +4,21 @@ from __future__ import annotations
 
 import threading
 import webbrowser
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from werkzeug.serving import make_server
 
 from cadquery_web_viewer.app import create_app
 from cadquery_web_viewer.mylogger import logger
+from cadquery_web_viewer.options_types import ServerOptions
 
 if TYPE_CHECKING:
     from cadquery_web_viewer.engine import CadQueryWebViewer
 
 _state_lock = threading.Lock()
 _wsgi_server: Any = None
-_server_thread: Optional[threading.Thread] = None
-_bound_engine: Optional[CadQueryWebViewer] = None
+_server_thread: threading.Thread | None = None
+_bound_engine: CadQueryWebViewer | None = None
 _listen_host: str = "127.0.0.1"
 _listen_port: int = 32323
 
@@ -25,7 +26,7 @@ DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 32323
 
 
-def _merge_server_options(server_options: Optional[dict]) -> dict[str, Any]:
+def _merge_server_options(server_options: ServerOptions | None) -> dict[str, Any]:
     o: dict[str, Any] = dict(server_options or {})
     o.setdefault("host", DEFAULT_HOST)
     o.setdefault("port", int(o.get("port", DEFAULT_PORT)))
@@ -65,7 +66,7 @@ def shutdown_embedded() -> None:
 
 def ensure_embedded_running(
     engine: CadQueryWebViewer,
-    server_options: Optional[dict] = None,
+    server_options: ServerOptions | None = None,
     *,
     daemon_thread: bool = False,
 ) -> str:
