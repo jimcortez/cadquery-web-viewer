@@ -8,7 +8,7 @@ import Models from "./models/Models.vue";
 import { VBtn, VLayout, VMain, VToolbarTitle } from "vuetify/lib/components/index.mjs";
 import { Document } from "@gltf-transform/core";
 import type ModelViewerWrapperT from "./viewer/ModelViewerWrapper.vue";
-import { mdiCube, mdiPlus } from "@mdi/js";
+import { mdiPlus } from "@mdi/js";
 import SvgIcon from "@jamescoyle/vue-icon";
 import { disableTapKey, sceneDocumentKey } from "./injectionKeys";
 import { useAppModelLoading } from "./composables/useAppModelLoading";
@@ -36,7 +36,7 @@ function setDisableTap(val: boolean) {
 }
 provide(disableTapKey, { disableTap, setDisableTap });
 
-const { preloadingModels, onModelRemoveRequest, loadModelManual, loadDemoModels, networkMgr } =
+const { preloadingModels, onModelRemoveRequest, loadModelManual, networkMgr } =
   useAppModelLoading(viewer, sceneDocument, tools, sceneUrl);
 
 useGltfFileDrop(networkMgr);
@@ -52,9 +52,6 @@ useGltfFileDrop(networkMgr);
       />
       <div v-else style="height: 100%; overflow-y: auto">
         <v-toolbar-title class="text-center ma-16 text-h5">No model loaded</v-toolbar-title>
-        <v-btn class="mx-auto d-block my-4" @click="loadDemoModels">
-          <svg-icon :path="mdiCube" type="mdi" />&nbsp; Load demo models...
-        </v-btn>
         <v-btn class="mx-auto d-block my-4" @click="loadModelManual">
           <svg-icon :path="mdiPlus" type="mdi" />&nbsp; Load model manually...
         </v-btn>

@@ -45,14 +45,11 @@ src = ["cadquery_web_viewer", "hatch_build.py"]
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
 
-[tool.ruff.lint.per-file-ignores]
-"cadquery_web_viewer/logo.py" = ["F403", "F405"]
-
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "basic"
 include = ["cadquery_web_viewer", "hatch_build.py"]
-exclude = ["cadquery_web_viewer/frontend", "cadquery_web_viewer/logo.py"]
+exclude = ["cadquery_web_viewer/frontend"]
 reportMissingImports = "none"
 reportMissingModuleSource = "none"
 reportArgumentType = false

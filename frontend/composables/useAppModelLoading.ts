@@ -104,19 +104,11 @@ export function useAppModelLoading(
     if (modelUrl) await networkMgr.load(modelUrl);
   }
 
-  function loadDemoModels() {
-    const base = new URL("assets/", window.location.href);
-    for (const name of ["fox.glb", "img.glb", "location.glb", "logo.glb", "logo_hl.glb", "logo_hl_tex.glb"]) {
-      void networkMgr.load(new URL(name, base).href);
-    }
-  }
-
   return {
     networkMgr,
     preloadingModels,
     onModelUpdateRequest,
     onModelRemoveRequest,
     loadModelManual,
-    loadDemoModels,
   };
 }

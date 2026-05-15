@@ -73,19 +73,3 @@ jobs:
           tags: cadquery-web-viewer:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  build-logo:
-    name: Build logo
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ inputs.ref }}
-          token: ${{ github.token }}
-      - uses: astral-sh/setup-uv@v8.1.0
-      - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv run --frozen python cadquery_web_viewer/logo.py
-      - uses: actions/upload-artifact@v7
-        with:
-          name: logo
-          path: assets/logo_build
-          retention-days: 5

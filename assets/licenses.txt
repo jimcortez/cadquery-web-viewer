@@ -1974,14 +1974,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 -----------
 
-CC0: Low poly fox by PixelMannen
-
-CC-BY 4.0: Rigging and animation by @tomkranis on Sketchfab
-
-glTF conversion by @AsoboStudio and @scurest
-
------------
-
 CC0: Qwantani Afternoon by Greg Zaal (Photography) and Jarod Guest (Processing)
 https://polyhaven.com/a/qwantani_afternoon
 
