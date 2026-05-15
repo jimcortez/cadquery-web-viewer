@@ -1,9 +1,11 @@
 """CLI entry point for the Flask-backed viewer server."""
 
 import argparse
+import logging
 
 from cadquery_web_viewer.app import create_app
-from cadquery_web_viewer.mylogger import logger
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 32323

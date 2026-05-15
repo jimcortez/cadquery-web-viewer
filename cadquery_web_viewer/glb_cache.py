@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import tempfile
 import threading
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from cadquery_web_viewer.mylogger import logger
+logger = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
 META_SUFFIX = ".meta.json"

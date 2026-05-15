@@ -1,3 +1,4 @@
+import logging
 
 from build123d import Compound, Face, Location, Vector, Vertex
 from OCP.BRep import BRep_Tool
@@ -11,7 +12,8 @@ from pygltflib import GLTF2
 
 from cadquery_web_viewer.cad import CADCoreLike, ColorTuple
 from cadquery_web_viewer.gltf import GLTFMgr
-from cadquery_web_viewer.mylogger import logger
+
+logger = logging.getLogger(__name__)
 
 
 def tessellate(

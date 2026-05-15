@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from typing import Any
 
 import httpx
 
 from cadquery_web_viewer.engine import prepare_glb_upload_batch
-from cadquery_web_viewer.mylogger import logger
 from cadquery_web_viewer.options_types import RemoteOptions
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_REMOTE_HOST = "localhost"
 DEFAULT_REMOTE_PORT = 32323

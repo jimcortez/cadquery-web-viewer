@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import webbrowser
 from typing import TYPE_CHECKING, Any
@@ -9,8 +10,9 @@ from typing import TYPE_CHECKING, Any
 from werkzeug.serving import make_server
 
 from cadquery_web_viewer.app import create_app
-from cadquery_web_viewer.mylogger import logger
 from cadquery_web_viewer.options_types import ServerOptions
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from cadquery_web_viewer.engine import CadQueryWebViewer

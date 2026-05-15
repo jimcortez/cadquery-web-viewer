@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 import queue
 import threading
 from collections.abc import Generator
 from typing import Generic, TypeVar
 
-from cadquery_web_viewer.mylogger import logger
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import inspect
 import json
+import logging
 import os
 import threading
 import time
@@ -22,10 +23,11 @@ from PIL import Image
 
 from cadquery_web_viewer.cad import CADCoreLike, CADLike, ColorTuple, _hashcode, get_color, get_shape, grab_all_cad
 from cadquery_web_viewer.gltf import get_version
-from cadquery_web_viewer.mylogger import logger
 from cadquery_web_viewer.pubsub import BufferedPubSub
 from cadquery_web_viewer.rwlock import RWLock
 from cadquery_web_viewer.tessellate import tessellate
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

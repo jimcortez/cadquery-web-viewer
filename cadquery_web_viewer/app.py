@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -10,8 +12,25 @@ from flask import Blueprint, Flask, Response, abort, request, send_from_director
 
 from cadquery_web_viewer.engine import CadQueryWebViewer
 from cadquery_web_viewer.glb_cache import GlbDiskCache
-from cadquery_web_viewer.myhttp import FRONTEND_BASE_PATH
-from cadquery_web_viewer.mylogger import logger
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_frontend_base_path() -> str | None:
+    pkg_dir = Path(__file__).resolve().parent
+    default_frontend = pkg_dir / "frontend"
+    env_override = os.getenv("FRONTEND_BASE_PATH")
+    candidate = Path(env_override) if env_override else default_frontend
+    if candidate.exists():
+        return str(candidate.resolve())
+    dist = pkg_dir.parent / "dist"
+    if dist.exists():
+        return str(dist.resolve())
+    logger.warning("Frontend not found at %s", candidate)
+    return None
+
+
+FRONTEND_BASE_PATH = _resolve_frontend_base_path()
 
 
 def _cors(resp: Response) -> Response:
