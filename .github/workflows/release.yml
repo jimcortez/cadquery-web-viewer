@@ -112,14 +112,25 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
-      - name: Upload wheel and sdist to GitHub Release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: dist/*
-          file_glob: true
-          tag: ${{ github.ref }}
-          overwrite: true
+      - name: Attach wheel and sdist to GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          wheels=(dist/*.whl)
+          sdists=(dist/*.tar.gz)
+          assets=("${wheels[@]}" "${sdists[@]}")
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::No .whl or .tar.gz found in dist/"
+            ls -la dist
+            exit 1
+          fi
+          # Release may already exist (e.g. deploy-pages uploaded the frontend zip first).
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag || true
+          fi
+          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
 
   deploy-docker:
     needs: rebuild
