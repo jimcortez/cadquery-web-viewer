@@ -17,6 +17,7 @@ The API and packaging are meant to be a **mostly drop-in replacement** for [Yet 
 
 - [Installation](docs/install.md) — pipx, uv tool, Docker, and other install paths
 - [Usage](docs/usage.md) — long-lived server, cache, `show()` options
+- [HTTP API](docs/api.md) — Flask `/api` endpoints (SSE, GLB upload, static UI)
 - [Migrating from YACV](docs/yacv_migration.md)
 - [Development](docs/development.md)
 
