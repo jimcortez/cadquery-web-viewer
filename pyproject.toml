@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadquery-web-viewer"
-version = "1.0.1"
+version = "1.1.0"
 description = "Web server and viewer for GLB/CAD preview (forked from Yet Another CAD Viewer)"
 authors = [{ name = "Jim Cortez", email = "jim@jimcortez.com" }]
 license = { text = "MIT" }
