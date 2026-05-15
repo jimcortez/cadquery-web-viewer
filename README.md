@@ -244,7 +244,6 @@ Open the URL Vite prints (often `http://localhost:5173`). The viewer tries the s
 
 - [cq-studio](https://github.com/ccazabon/cq-studio) — alternative file-watch workflow; related viewer history.
 - [build123d-docker](https://github.com/derhuerst/build123d-docker/pkgs/container/build123d) — containers for CAD tooling.
-- [OCP.wasm](https://github.com/yeicor/OCP.wasm/) — OpenCASCADE compiled for WebAssembly (another browser CAD direction).
 
 ## Special thanks
 

@@ -4,7 +4,6 @@ import base64
 import inspect
 import json
 import os
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -72,11 +71,10 @@ class UpdatesApiFullData:
 
 
 class CadQueryWebViewerProtocol(Enum):
-    """Enum of communication protocols supported by the server"""
+    """Enum of communication protocols supported by the server."""
+
     HTTP = auto()
-    """The recommended protocol for any platform that can run a web server."""
-    STDERR = auto()
-    """Prints the updates one by one to stderr (first metadata, then base64 of glb file) using a special prefix. Required for Pyodide support."""
+    """The protocol used for the embedded / remote HTTP viewer."""
 
 
 class CadQueryWebViewer:
@@ -84,7 +82,7 @@ class CadQueryWebViewer:
 
     # Startup
     protocol: CadQueryWebViewerProtocol
-    """The protocol used by the server. Defaults to HTTP, but can be set to STDERR for Pyodide support."""
+    """Always :attr:`CadQueryWebViewerProtocol.HTTP` (reserved for future transport options)."""
     server_thread: Any | None
     """Reserved; embedded HTTP server is no longer started from ``CadQueryWebViewer``."""
     server: Any | None
@@ -149,8 +147,12 @@ class CadQueryWebViewer:
 
     def __init__(self):
         """Initializes the cadquery-web-viewer engine."""
-        raw_protocol = os.getenv('CADQUERY_WEB_VIEWER_PROTOCOL', 'http' if sys.platform != 'emscripten' else 'stderr').upper()
-        self.protocol = CadQueryWebViewerProtocol[raw_protocol] if raw_protocol in CadQueryWebViewerProtocol.__members__ else CadQueryWebViewerProtocol.HTTP
+        raw_protocol = os.getenv("CADQUERY_WEB_VIEWER_PROTOCOL", "http").upper()
+        self.protocol = (
+            CadQueryWebViewerProtocol[raw_protocol]
+            if raw_protocol in CadQueryWebViewerProtocol.__members__
+            else CadQueryWebViewerProtocol.HTTP
+        )
         self.server_thread = None
         self.server = None
         self.startup_complete = threading.Event()
@@ -170,8 +172,6 @@ class CadQueryWebViewer:
 
     def start(self):
         """Legacy hook: the HTTP viewer is served by the ``cadquery-web-viewer`` Flask CLI, not this method."""
-        if self.protocol == CadQueryWebViewerProtocol.STDERR:
-            return
         logger.warning(
             "CadQueryWebViewer.start() is a legacy hook; use show(..., server_type='in-process') "
             "or run cadquery-web-viewer and show(..., server_type='remote')."
@@ -181,8 +181,6 @@ class CadQueryWebViewer:
     # noinspection PyUnusedLocal
     def stop(self, *args):
         """Legacy hook; embedded ``ThreadingHTTPServer`` is no longer used."""
-        if self.protocol == CadQueryWebViewerProtocol.STDERR:
-            return
         if self.server_thread is None:
             return
 
@@ -216,23 +214,9 @@ class CadQueryWebViewer:
                 self._sse_idle_cv.wait(timeout=remaining)
             return True
 
-    _stderr_model_prefix = "cadquery_web_viewer://model/"
-
     def _show_event(self, event: UpdatesApiFullData):
-        """Handles a show event by publishing it to the show events buffer (and special handling for stderr protocol)."""
+        """Handles a show event by publishing it to the show events buffer."""
         self.show_events.publish(event)
-        # If the protocol is STDERR, we need to print the event to stderr
-        if self.protocol == CadQueryWebViewerProtocol.STDERR:
-            msg = f'{self._stderr_model_prefix}{event.to_json()}'
-            if not event.is_remove:
-                # Always build the object even if the interface already has it (optimization disabled for Pyodide)
-                glb_and_hash = self.export(event.name)
-                if glb_and_hash is None:
-                    logger.warning('Object %s not found, ignoring it...', event.name)
-                    return
-                glb = glb_and_hash[0]
-                msg += f'{base64.b64encode(glb).decode("utf-8")}'
-            print(msg, file=sys.stderr, flush=True)
 
     def show(
         self,
@@ -260,14 +244,8 @@ class CadQueryWebViewer:
         """
         # Prepare the arguments
         start = time.time()
-        names = names or [_find_var_name(obj) for obj in objs]
-        if isinstance(names, str):
-            names = [names]
-        if len(names) != len(objs):
-            raise ValueError("Number of names must match the number of objects")
-        for color_name in ('color_faces', 'color_edges', 'color_vertices'):
-            if color_name in kwargs:
-                kwargs[color_name] = get_color(kwargs[color_name]) or _read_color(kwargs[color_name])
+        names = _prepare_show_names(objs, names)
+        _normalize_show_color_kwargs(kwargs)
 
         # Handle auto clearing of previous objects
         if kwargs.get('auto_clear', True):
@@ -282,21 +260,7 @@ class CadQueryWebViewer:
 
         # Publish the show event
         for obj, name in zip(objs, names):
-            obj_color = get_color(obj)
-            # Some properties may be lost in preprocessing, so save them in kwargs
-            _kwargs = kwargs.copy()
-            if obj_color is not None:
-                _kwargs['color_obj'] = obj_color  # Only applies to highest-dimensional objects
-            _kwargs['texture'] = _read_texture_uri(getattr(obj, 'cadquery_web_viewer_texture', None) or kwargs.get('texture', None))
-            if not isinstance(obj, bytes):
-                obj = _preprocess_cad(obj, **_kwargs)
-            _hash = _hashcode(obj, **_kwargs)
-            event = UpdatesApiFullData(
-                UpdatesApiData(name=name, hash=_hash, is_remove=False),
-                obj,
-                _kwargs or {},
-            )
-            self._show_event(event)
+            self._show_event(_make_show_event_for_object(obj, name, kwargs))
 
         logger.info('show %s took %.3f seconds', names, time.time() - start)
 
@@ -407,23 +371,9 @@ class CadQueryWebViewer:
                 self.build_events[name] = publish_to
 
                 # Build and publish the object (once)
-                if isinstance(event.obj, bytes):  # Already a GLTF
-                    publish_to.publish(event.obj)
-                else:  # CAD object to tessellate and convert to GLTF
-                    gltf = tessellate(
-                        event.obj,
-                        color_faces=event.kwargs.get('color_faces', self.color_faces),
-                        color_edges=event.kwargs.get('color_edges', self.color_edges),
-                        color_vertices=event.kwargs.get('color_vertices', self.color_vertices),
-                        color_obj=event.kwargs.get('color_obj', None),
-                        tolerance=event.kwargs.get('tolerance', 0.1),
-                        angular_tolerance=event.kwargs.get('angular_tolerance', 0.1),
-                        faces=event.kwargs.get('faces', True), edges=event.kwargs.get('edges', True),
-                        vertices=event.kwargs.get('vertices', True),
-                        texture=event.kwargs.get('texture', self.texture))
-                    glb_list_of_bytes = gltf.save_to_bytes()
-                    glb_bytes = b''.join(glb_list_of_bytes)
-                    publish_to.publish(glb_bytes)
+                glb_bytes = _glb_bytes_from_show_event(self, event)
+                publish_to.publish(glb_bytes)
+                if not isinstance(event.obj, bytes):
                     logger.info('export(%s) took %.3f seconds, %s', name, time.time() - start,
                                 sizeof_fmt(len(glb_bytes)))
 
@@ -528,28 +478,105 @@ def _find_var_name(obj: Any, avoid_levels: int = 2) -> str:
     return t + str(_obj_name_counts[t])
 
 
+def _prepare_show_names(objs: tuple[Any, ...], names: str | list[str] | None) -> list[str]:
+    resolved = names or [_find_var_name(obj) for obj in objs]
+    if isinstance(resolved, str):
+        resolved = [resolved]
+    if len(resolved) != len(objs):
+        raise ValueError("Number of names must match the number of objects")
+    return resolved
+
+
+def _normalize_show_color_kwargs(kwargs: dict[str, Any]) -> None:
+    for color_name in ('color_faces', 'color_edges', 'color_vertices'):
+        if color_name in kwargs:
+            kwargs[color_name] = get_color(kwargs[color_name]) or _read_color(kwargs[color_name])
+
+
+def _make_show_event_for_object(obj: CadQueryWebViewerObject, name: str, kwargs: dict[str, Any]) -> UpdatesApiFullData:
+    obj_color = get_color(obj)
+    _kwargs = kwargs.copy()
+    if obj_color is not None:
+        _kwargs['color_obj'] = obj_color
+    _kwargs['texture'] = _read_texture_uri(
+        getattr(obj, 'cadquery_web_viewer_texture', None) or kwargs.get('texture', None)
+    )
+    body: CadQueryWebViewerObject = obj
+    if not isinstance(body, bytes):
+        body = _preprocess_cad(body, **_kwargs)
+    _hash = _hashcode(body, **_kwargs)
+    return UpdatesApiFullData(
+        UpdatesApiData(name=name, hash=_hash, is_remove=False),
+        body,
+        _kwargs or {},
+    )
+
+
+def _glb_bytes_from_show_event(viewer: CadQueryWebViewer, event: UpdatesApiFullData) -> bytes:
+    if isinstance(event.obj, bytes):
+        return event.obj
+    gltf = tessellate(
+        event.obj,
+        color_faces=event.kwargs.get('color_faces', viewer.color_faces),
+        color_edges=event.kwargs.get('color_edges', viewer.color_edges),
+        color_vertices=event.kwargs.get('color_vertices', viewer.color_vertices),
+        color_obj=event.kwargs.get('color_obj', None),
+        tolerance=event.kwargs.get('tolerance', 0.1),
+        angular_tolerance=event.kwargs.get('angular_tolerance', 0.1),
+        faces=event.kwargs.get('faces', True),
+        edges=event.kwargs.get('edges', True),
+        vertices=event.kwargs.get('vertices', True),
+        texture=event.kwargs.get('texture', viewer.texture),
+    )
+    return b''.join(gltf.save_to_bytes())
+
+
+def _show_events_from_inputs(
+    *objs: Any,
+    names: str | list[str] | None,
+    kwargs: dict[str, Any],
+) -> tuple[list[UpdatesApiFullData], list[str]]:
+    resolved = _prepare_show_names(objs, names)
+    _normalize_show_color_kwargs(kwargs)
+    events = [_make_show_event_for_object(obj, name, kwargs) for obj, name in zip(objs, resolved)]
+    return events, resolved
+
+
+def glb_bytes_list_from_show_inputs(
+    *objs: Any,
+    names: str | list[str] | None = None,
+    **kwargs: Any,
+) -> tuple[list[bytes], list[str]]:
+    """
+    Tessellate (or pass through ``bytes``) and return one GLB blob per object, plus resolved names.
+
+    Uses the same tessellation and metadata rules as :meth:`CadQueryWebViewer.show`. Does not touch
+    the global :data:`cadquery_web_viewer.viewer` or any show-event buffer.
+    """
+    kw = dict(kwargs)
+    events, resolved = _show_events_from_inputs(*objs, names=names, kwargs=kw)
+    defaults = CadQueryWebViewer()
+    glbs = [_glb_bytes_from_show_event(defaults, ev) for ev in events]
+    return glbs, resolved
+
+
 def prepare_glb_upload_batch(
     *objs: Any,
     names: str | list[str] | None = None,
     **kwargs: Any,
 ) -> tuple[list[tuple[str, bytes, str, dict[str, Any]]], list[str]]:
     """
-    Tessellate like ``CadQueryWebViewer.show`` on a scratch instance and return ``(name, glb, hash, kwargs)`` per object.
-    The second return value is the resolved name list in the same order as the payloads.
+    Tessellate using the same path as :func:`glb_bytes_list_from_show_inputs` and return
+    ``(name, glb, hash, kwargs)`` per object for multipart upload. The second return value is the
+    resolved name list in the same order as the payloads.
     """
-    resolved = names or [_find_var_name(obj) for obj in objs]
-    if isinstance(resolved, str):
-        resolved = [resolved]
-    tmp = CadQueryWebViewer()
-    tmp.show(*objs, names=resolved, **kwargs)
-    payloads: list[tuple[str, bytes, str, dict[str, Any]]] = []
-    for name in resolved:
-        exp = tmp.export(name)
-        if exp is None:
-            continue
-        glb, _ = exp
-        ev = tmp._show_events(name)[-1]
-        payloads.append((name, glb, ev.hash, dict(ev.kwargs or {})))
+    kw = dict(kwargs)
+    events, resolved = _show_events_from_inputs(*objs, names=names, kwargs=kw)
+    defaults = CadQueryWebViewer()
+    payloads = [
+        (ev.name, _glb_bytes_from_show_event(defaults, ev), ev.hash, dict(ev.kwargs or {}))
+        for ev in events
+    ]
     return payloads, resolved
 
 

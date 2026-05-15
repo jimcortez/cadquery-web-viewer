@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Callable
 from typing import Any, Literal
 
 from cadquery_web_viewer.cad import grab_all_cad, image_to_gltf
-from cadquery_web_viewer.engine import CadQueryWebViewer, CadQueryWebViewerProtocol
+from cadquery_web_viewer.engine import CadQueryWebViewer, CadQueryWebViewerProtocol, glb_bytes_list_from_show_inputs
 from cadquery_web_viewer.options_types import RemoteOptions, ServerOptions
 
 ServerType = Literal["in-process", "remote", "local"]
@@ -18,8 +17,18 @@ viewer = CadQueryWebViewer()
 export_all = viewer.export_all
 
 
-def _stderr_like() -> bool:
-    return viewer.protocol == CadQueryWebViewerProtocol.STDERR or sys.platform == "emscripten"
+def render(
+    *objs: Any,
+    names: str | list[str] | None = None,
+    **kwargs: Any,
+) -> list[bytes]:
+    """
+    Tessellate CAD-like objects to GLB bytes (``bytes`` inputs are returned unchanged).
+
+    Use the same ``names`` and ``**kwargs`` when calling :func:`show` so hashes and viewer metadata match.
+    """
+    glbs, _ = glb_bytes_list_from_show_inputs(*objs, names=names, **kwargs)
+    return glbs
 
 
 def _in_process_session(
@@ -64,21 +73,25 @@ def show(
     block_until_disconnect: bool = True,
     **kwargs: Any,
 ) -> None:
-    if _stderr_like():
-        viewer.show(*objs, names=names, **kwargs)
-        return
+    disp_objs: tuple[Any, ...] = objs
+    disp_names: str | list[str] | None = names
+    if objs and any(not isinstance(o, bytes) for o in objs):
+        glbs, resolved = glb_bytes_list_from_show_inputs(*objs, names=names, **kwargs)
+        disp_objs = tuple(glbs)
+        disp_names = resolved
+
     if server_type == "local":
-        viewer.show(*objs, names=names, **kwargs)
+        viewer.show(*disp_objs, names=disp_names, **kwargs)
         return
     if server_type == "remote":
         from cadquery_web_viewer import http_client
 
-        http_client.remote_show(*objs, names=names, remote_options=remote_options, **kwargs)
+        http_client.remote_show(*disp_objs, names=disp_names, remote_options=remote_options, **kwargs)
         return
     _in_process_session(
         server_options=server_options,
         block_until_disconnect=block_until_disconnect,
-        body=lambda: viewer.show(*objs, names=names, **kwargs),
+        body=lambda: viewer.show(*disp_objs, names=disp_names, **kwargs),
     )
 
 
@@ -108,9 +121,6 @@ def remove(
     server_options: ServerOptions | None = None,
     block_until_disconnect: bool = True,
 ) -> None:
-    if _stderr_like():
-        viewer.remove(name)
-        return
     if server_type == "local":
         viewer.remove(name)
         return
@@ -132,9 +142,6 @@ def clear(
     server_options: ServerOptions | None = None,
     block_until_disconnect: bool = True,
 ) -> None:
-    if _stderr_like():
-        viewer.clear()
-        return
     if server_type == "local":
         viewer.clear()
         return
@@ -161,6 +168,7 @@ __all__ = [
     "grab_all_cad",
     "image_to_gltf",
     "remove",
+    "render",
     "show",
     "show_all",
     "viewer",
