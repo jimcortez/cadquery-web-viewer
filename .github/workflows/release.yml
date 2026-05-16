@@ -115,6 +115,8 @@ jobs:
       - name: Attach wheel and sdist to GitHub Release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          # No actions/checkout in this job; gh needs an explicit repo.
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -128,7 +130,7 @@ jobs:
           fi
           # Release may already exist (e.g. deploy-pages uploaded the frontend zip first).
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag || true
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes || true
           fi
           gh release upload "$GITHUB_REF_NAME" "${assets[@]}" --clobber
 
