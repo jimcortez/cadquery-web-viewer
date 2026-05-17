@@ -14,6 +14,7 @@ import {
 import {extrasNameKey, extrasNameValueHelpers} from "../misc/gltf";
 import {Mesh} from "@gltf-transform/core";
 import {nextTick, ref, watch} from "vue";
+import type {ModelViewerElement} from "@google/model-viewer";
 import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
 import {isViewerReady} from "../viewer/viewerUtils";
 import {
@@ -28,7 +29,7 @@ import {
   mdiVectorRectangle
 } from '@mdi/js'
 import SvgIcon from "@jamescoyle/vue-icon";
-import {BackSide, FrontSide} from "three/src/constants.js";
+import {BackSide, DoubleSide, FrontSide} from "three/src/constants.js";
 import {Box3} from "three/src/math/Box3.js";
 import {Color} from "three/src/math/Color.js";
 import {Plane} from "three/src/math/Plane.js";
@@ -45,7 +46,26 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ remove: [] }>()
 
-let modelName = props.meshes[0]?.getExtras()?.[extrasNameKey] // + " blah blah blah blah blag blah blah blah"
+const modelName = props.meshes[0]?.getExtras()?.[extrasNameKey]?.toString() // + " blah blah blah blah blag blah blah blah"
+
+function objectMatchesName(obj: MObject3D, name: string | undefined): boolean {
+  if (!name) return false;
+  let current: MObject3D | null = obj;
+  while (current) {
+    if (current.userData?.[extrasNameKey] === name) return true;
+    current = current.parent as MObject3D | null;
+  }
+  return false;
+}
+
+function prepareMeshMaterial(child: MObject3D) {
+  if (!child.material) return;
+  if (child.geometry?.attributes?.color) {
+    child.material.vertexColors = true;
+    child.material.needsUpdate = true;
+  }
+  child.material.side = modelName === extrasNameValueHelpers ? FrontSide : DoubleSide;
+}
 
 // Count the number of faces, edges and vertices
 let faceCount = ref(-1);
@@ -82,7 +102,7 @@ function onEnabledFeaturesChange(newEnabledFeatures: Array<number>) {
   let sceneModel = (scene as any)?._model;
   if (!scene || !sceneModel) return;
   sceneModel.traverse((child: MObject3D) => {
-    if (child.userData[extrasNameKey] === modelName) {
+    if (objectMatchesName(child, modelName)) {
       let childIsFace = child.type == 'Mesh' || child.type == 'SkinnedMesh'
       let childIsEdge = child.type == 'Line' || child.type == 'LineSegments' || child.type == 'LineSegments2'
       let childIsVertex = child.type == 'Points'
@@ -105,7 +125,7 @@ function onOpacityChange(newOpacity: number) {
   let sceneModel = (scene as any)?._model;
   if (!scene || !sceneModel) return;
   sceneModel.traverse((child: MObject3D) => {
-    if (child.userData[extrasNameKey] === modelName) {
+    if (objectMatchesName(child, modelName)) {
       if (child.material && child.material.opacity !== newOpacity) {
         child.material.transparent = newOpacity < 1;
         child.material.opacity = newOpacity;
@@ -123,7 +143,7 @@ function onWireframeChange(newWireframe: boolean) {
   let sceneModel = (scene as any)?._model;
   if (!scene || !sceneModel) return;
   sceneModel.traverse((child: MObject3D) => {
-    if (child.userData[extrasNameKey] === modelName) {
+    if (objectMatchesName(child, modelName)) {
       let childIsFace = child.type == 'Mesh' || child.type == 'SkinnedMesh'
       if (child.material && child.material.wireframe !== newWireframe && childIsFace) {
         child.material.wireframe = newWireframe;
@@ -151,13 +171,13 @@ function onClipPlanesChange() {
     // Get the bounding box containing all features of this model
     bbox = new Box3();
     sceneModel.traverse((child: MObject3D) => {
-      if (child.userData[extrasNameKey] === modelName) {
+      if (objectMatchesName(child, modelName)) {
         bbox.expandByObject(child);
       }
     });
   }
   sceneModel.traverse((child: MObject3D) => {
-    if (child.userData[extrasNameKey] === modelName) {
+    if (objectMatchesName(child, modelName)) {
       if (child.material) {
         if (bbox?.isEmpty() == false) {
           let offsetX = bbox.min.x + clipPlaneX.value * (bbox.max.x - bbox.min.x);
@@ -204,7 +224,7 @@ function onEdgeWidthChange(newEdgeWidth: number) {
   edgeWidthChangeCleanup = [];
   let linesToImprove: Array<MObject3D> = [];
   sceneModel.traverse((child: MObject3D) => {
-    if (child.userData[extrasNameKey] === modelName) {
+    if (objectMatchesName(child, modelName)) {
       if (child.type == 'Line' || child.type == 'LineSegments') {
         // child.material.linewidth = 3; // Not supported in WebGL2
         // Swap geometry with LineGeometry to support widths
@@ -263,7 +283,7 @@ function onExplodeChange(newExplodeStrength: number) {
   const othersBbox = new Box3();
   sceneModel.traverse((child: MObject3D) => {
     if (child == sceneModel) return; // Skip the scene itself
-    const isMe = child.userData[extrasNameKey] === modelName;
+    const isMe = objectMatchesName(child, modelName);
     if ((child.type === 'Mesh' || child.type === 'SkinnedMesh' ||
         child.type === 'Line' || child.type === 'LineSegments' ||
         child.type === 'Points') && !child.userData.noHit) {
@@ -286,7 +306,7 @@ function onExplodeChange(newExplodeStrength: number) {
 
   // Apply explosion
   sceneModel.traverse((child: MObject3D) => {
-    if (child.userData[extrasNameKey] === modelName) {
+    if (objectMatchesName(child, modelName)) {
       if ((child.type === 'Mesh' || child.type === 'SkinnedMesh' ||
           child.type === 'Line' || child.type === 'LineSegments' ||
           child.type === 'Points')) {
@@ -322,10 +342,24 @@ watch(explodeStrength, (newVal) => onExplodeChange(newVal));
 watch(explodeSwapped, () => onExplodeChange(explodeStrength.value));
 
 
+let setupSceneKey: string | null = null;
+
+watch(
+  () => props.viewer?.elem?.src,
+  () => {
+    setupSceneKey = null;
+  },
+);
+
 function onModelLoad() {
   let scene = props.viewer?.scene;
   let sceneModel = (scene as any)?._model;
   if (!scene || !sceneModel) return;
+
+  const sceneSrc = props.viewer?.elem?.src?.toString() ?? "";
+  const setupKey = `${sceneSrc}:${modelName}`;
+  if (setupSceneKey === setupKey) return;
+  setupSceneKey = setupKey;
 
   // Count the number of faces, edges and vertices
   const isFirstLoad = faceCount.value === -1;
@@ -334,7 +368,10 @@ function onModelLoad() {
       .map(p => (p.getExtras()?.face_triangles_end as any)?.length ?? 1)
       .reduce((a, b) => a + b, 0)
   edgeCount.value = props.meshes
-      .flatMap((m) => m.listPrimitives().filter(p => p.getMode() in [WebGL2RenderingContext.LINE_STRIP, WebGL2RenderingContext.LINES]))
+      .flatMap((m) => m.listPrimitives().filter((p) => {
+        const mode = p.getMode();
+        return mode === WebGL2RenderingContext.LINE_STRIP || mode === WebGL2RenderingContext.LINES;
+      }))
       .map(p => (p.getExtras()?.edge_points_end as any)?.length ?? 0)
       .reduce((a, b) => a + b, 0)
   vertexCount.value = props.meshes
@@ -356,7 +393,7 @@ function onModelLoad() {
   let childrenToAdd: Array<MObject3D> = [];
   sceneModel.traverse((child: MObject3D) => {
     child.updateMatrixWorld();  // Objects are mostly static, so ensure updated matrices
-    if (child.userData[extrasNameKey] === modelName) {
+    if (objectMatchesName(child, modelName)) {
       if (child.type == 'Mesh' || child.type == 'SkinnedMesh') {
         // Compute a BVH for faster raycasting (MUCH faster selection)
         // @ts-ignore
@@ -368,9 +405,9 @@ function onModelLoad() {
         // https://threejs.org/examples/?q=clipping#webgl_clipping_stencil
         // But this is buggy for lots of models, so instead we just draw
         // back faces with a different material.
-        child.material.side = FrontSide;
+        prepareMeshMaterial(child);
 
-        if (modelName !== extrasNameValueHelpers) {
+        if (modelName !== extrasNameValueHelpers && !child.userData.backChild) {
           // The back of the material only writes to the stencil buffer the areas
           // that should be covered by the plane, but does not render anything
           let backChild = child.clone();
@@ -408,8 +445,11 @@ const onViewerReady = (viewer: InstanceType<typeof ModelViewerWrapper> | null) =
   // isViewerReady guards against the async component wrapper state (before inner component resolves)
   if (!isViewerReady(viewer)) return;
   viewer.onElemReady((elem: HTMLElement) => {
-    elem.addEventListener('before-render', onModelLoad);
+    elem.addEventListener('load', onModelLoad);
     elem.addEventListener('camera-change', onClipPlanesChange);
+    if ((elem as ModelViewerElement).loaded) {
+      void nextTick(onModelLoad);
+    }
   });
 };
 // If the viewer already exposes onElemReady it is the actual component – call right away.

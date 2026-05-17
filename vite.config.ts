@@ -36,6 +36,8 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./frontend", import.meta.url)),
     },
+    // model-viewer and our code must share one THREE build or scene matrices break.
+    dedupe: ["three"],
   },
   build: {
     assetsDir: ".", // Support deploying to a subdirectory using relative URLs

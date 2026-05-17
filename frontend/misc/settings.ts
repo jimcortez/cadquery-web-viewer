@@ -19,13 +19,15 @@ export interface CadqueryViewerSettings {
   shadowIntensity: number;
   environment: string;
   environmentIntensity: number;
+  /** @deprecated Use backgroundColor; 1×1 PNG skybox breaks model-viewer 4.x HDR. */
   skybox: string;
+  backgroundColor: string;
 }
 
 export const settings = (async (): Promise<CadqueryViewerSettings> => {
   const settings: CadqueryViewerSettings = {
     preload: [
-      // Websocket URLs automatically listen for new models from the python backend
+      // dev+ URLs subscribe to SSE (/api/events) for models from the Python backend
       "<auto>", // Get the default preload URL if not overridden
     ],
     loadHelpers: true,
@@ -41,13 +43,13 @@ export const settings = (async (): Promise<CadqueryViewerSettings> => {
     panSensitivity: 1,
     exposure: 1,
     shadowIntensity: 0,
-    // Nice low-res outdoor/high-contrast HDRI image (CC0 licensed) for lighting
-    environment: new URL("../../assets/qwantani_afternoon_1k_hdr.jpg", import.meta.url).href,
+    // Optional LDR/HDR URL for image-based lighting. Empty = model-viewer default lights (reliable).
+    // The bundled JPEG is not a gain-map HDR; passing it breaks the renderer on model-viewer 4.x.
+    environment: "",
     environmentIntensity: 1.0,
-    // Uniform (1x1 pixel) medium gray background for visibility (following dark/light mode)
-    skybox: window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEU4ODiyn42XAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg=="
-      : "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABAQMAAAAl21bKAAAAA1BMVEW6urpaLVq8AAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg==",
+    // Never use a 1×1 PNG as skybox-image — model-viewer 4.x treats it as HDR and breaks rendering.
+    skybox: "",
+    backgroundColor: window.matchMedia("(prefers-color-scheme: dark)").matches ? "#383838" : "#d0d0d0",
   };
 
   // Auto-override any settings from the URL (either GET parameters or hash)
@@ -77,7 +79,7 @@ export const settings = (async (): Promise<CadqueryViewerSettings> => {
     }
     // Handle special <auto> preload URL
     if (url === "<auto>") {
-      const possibleBackend = new URL("/api/updates", window.location.origin);
+      const possibleBackend = new URL("/api/events", window.location.origin);
       await fetch(possibleBackend, { method: "HEAD" })
         .then((response) => {
           const ct = response.headers.get("Content-Type") || "";
@@ -124,6 +126,8 @@ function parseSetting(name: string, value: string, settings: CadqueryViewerSetti
     case "number":
       return Number(value);
     case "string":
+      // Ignore legacy 1×1 PNG skybox URLs that break model-viewer 4.x.
+      if (name === "skybox" && value.startsWith("data:image/")) return "";
       return value;
     default:
       throw new Error(`Unknown setting type: ${typeof prevValue} -- ${String(prevValue)}`);

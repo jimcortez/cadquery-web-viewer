@@ -74,9 +74,18 @@ export async function mergePartial(
   return document;
 }
 
+function doubleSidedMaterials(): Transform {
+  return (doc: Document) => {
+    for (const mat of doc.getRoot().listMaterials()) {
+      mat.setDoubleSided(true);
+    }
+    return doc;
+  };
+}
+
 export async function mergeFinalize(document: Document): Promise<Document> {
   // Single scene & buffer required before loading & rendering
-  return await document.transform(mergeScenes(), unpartition());
+  return await document.transform(mergeScenes(), doubleSidedMaterials(), unpartition());
 }
 
 export async function toBuffer(doc: Document): Promise<Uint8Array> {

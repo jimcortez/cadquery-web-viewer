@@ -1,4 +1,4 @@
-"""HTTP client for posting models to a running ``cadquery-web-viewer`` Flask instance."""
+"""HTTP client for a running ``cadquery-web-viewer`` Flask instance."""
 
 from __future__ import annotations
 
@@ -6,10 +6,12 @@ import base64
 import json
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
 from cadquery_web_viewer.engine import prepare_glb_upload_batch
+from cadquery_web_viewer.events_api import OBJECT_CREATED, OBJECT_VERSIONED, SCENE_CLEARED
 from cadquery_web_viewer.options_types import RemoteOptions
 
 logger = logging.getLogger(__name__)
@@ -24,23 +26,42 @@ def _base(host: str, port: int) -> str:
     return f"http://{host}:{port}"
 
 
-def _multipart_upload(url: str, metadata: dict[str, Any], glb: bytes, timeout: float) -> None:
+def _object_url(host: str, port: int, name: str) -> str:
+    return f"{_base(host, port)}/api/object/{quote(name, safe='')}"
+
+
+def _put_object(
+    host: str,
+    port: int,
+    name: str,
+    metadata: dict[str, Any],
+    glb: bytes,
+    timeout: float,
+) -> dict[str, Any]:
+    url = _object_url(host, port, name)
+    meta_json = json.dumps(metadata, separators=(",", ":"))
     files = {"glb": ("model.glb", glb, "model/gltf-binary")}
-    data = {"metadata": json.dumps(metadata, separators=(",", ":"))}
+    data = {"metadata": meta_json}
     with httpx.Client(timeout=timeout) as client:
-        response = client.post(url, files=files, data=data)
+        response = client.put(url, files=files, data=data)
         response.raise_for_status()
+        return response.json()
 
 
-def _post_json(host: str, port: int, path: str, body: dict[str, Any], timeout: float) -> None:
-    url = f"{_base(host, port)}{path}"
+def _publish_events(host: str, port: int, events: list[dict[str, Any]], timeout: float) -> None:
+    body = events[0] if len(events) == 1 else {"events": events}
+    payload = json.dumps(body, separators=(",", ":")).encode("utf-8")
+    url = f"{_base(host, port)}/api/events"
     with httpx.Client(timeout=timeout) as client:
-        response = client.post(url, json=body)
+        response = client.post(
+            url,
+            content=payload,
+            headers={"Content-Type": "application/json"},
+        )
         response.raise_for_status()
 
 
 def _json_safe_show_kwargs(kw: dict[str, Any] | None) -> dict[str, Any]:
-    """Make ``CadQueryWebViewer.show`` kwargs safe for JSON in multipart ``metadata`` (e.g. texture as ``(bytes, mime)``)."""
     if not kw:
         return {}
     out: dict[str, Any] = {}
@@ -72,28 +93,52 @@ def remote_show(
     **kwargs: Any,
 ) -> None:
     o = _resolved_remote(remote_options)
-    url = f"{_base(o['host'], o['port'])}/api/show"
     payloads, batch_names = prepare_glb_upload_batch(*objs, names=names, **kwargs)
     auto_clear_all = kwargs.get("auto_clear", True)
-    for i, (name, glb, h, kw) in enumerate(payloads):
-        meta: dict[str, Any] = {
-            "name": name,
-            "hash": h,
-            "kwargs": _json_safe_show_kwargs(kw),
-            "auto_clear": bool(auto_clear_all and i == 0),
-            "except_names": list(batch_names) if (auto_clear_all and i == 0) else None,
-        }
+    events: list[dict[str, Any]] = []
+    if auto_clear_all and payloads:
+        events.append({"type": SCENE_CLEARED, "except_names": list(batch_names)})
+    for name, glb, h, kw in payloads:
+        meta = {"hash": h, "kwargs": _json_safe_show_kwargs(kw)}
         try:
-            _multipart_upload(url, meta, glb, timeout=o["upload_timeout"])
+            result = _put_object(o["host"], o["port"], name, meta, glb, timeout=o["upload_timeout"])
         except httpx.HTTPError as e:
-            logger.error("remote show failed for %s: %s", name, e)
+            logger.error("remote PUT object failed for %s: %s", name, e)
+            raise
+        version = int(result["version"])
+        if version > 1:
+            events.append(
+                {
+                    "type": OBJECT_VERSIONED,
+                    "name": name,
+                    "version": version,
+                    "hash": h,
+                }
+            )
+        else:
+            events.append(
+                {
+                    "type": OBJECT_CREATED,
+                    "name": name,
+                    "version": version,
+                    "hash": h,
+                }
+            )
+    if events:
+        try:
+            _publish_events(o["host"], o["port"], events, timeout=o["post_timeout"])
+        except httpx.HTTPError as e:
+            logger.error("remote publish events failed: %s", e)
             raise
 
 
 def remote_remove(name: str, remote_options: RemoteOptions | None = None) -> None:
     o = _resolved_remote(remote_options)
+    url = _object_url(o["host"], o["port"], name)
     try:
-        _post_json(o["host"], o["port"], "/api/remove", {"name": name}, timeout=o["post_timeout"])
+        with httpx.Client(timeout=o["post_timeout"]) as client:
+            response = client.delete(url)
+            response.raise_for_status()
     except httpx.HTTPError as e:
         logger.error("remote remove failed: %s", e)
         raise
@@ -102,7 +147,42 @@ def remote_remove(name: str, remote_options: RemoteOptions | None = None) -> Non
 def remote_clear(remote_options: RemoteOptions | None = None) -> None:
     o = _resolved_remote(remote_options)
     try:
-        _post_json(o["host"], o["port"], "/api/clear", {}, timeout=o["post_timeout"])
+        _publish_events(o["host"], o["port"], [{"type": SCENE_CLEARED, "except_names": []}], o["post_timeout"])
+        with httpx.Client(timeout=o["post_timeout"]) as client:
+            response = client.delete(f"{_base(o['host'], o['port'])}/api/object")
+            response.raise_for_status()
     except httpx.HTTPError as e:
         logger.error("remote clear failed: %s", e)
         raise
+
+
+def remote_list_objects(remote_options: RemoteOptions | None = None) -> list[dict[str, Any]]:
+    o = _resolved_remote(remote_options)
+    url = f"{_base(o['host'], o['port'])}/api/object"
+    with httpx.Client(timeout=o["post_timeout"]) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        return list(response.json().get("objects", []))
+
+
+def remote_patch_object(
+    name: str,
+    remote_options: RemoteOptions | None = None,
+    *,
+    new_name: str | None = None,
+    notes: str | None = None,
+    settings: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    o = _resolved_remote(remote_options)
+    body: dict[str, Any] = {}
+    if new_name is not None:
+        body["name"] = new_name
+    if notes is not None:
+        body["notes"] = notes
+    if settings is not None:
+        body["settings"] = settings
+    url = _object_url(o["host"], o["port"], name)
+    with httpx.Client(timeout=o["post_timeout"]) as client:
+        response = client.patch(url, json=body)
+        response.raise_for_status()
+        return response.json()

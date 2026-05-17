@@ -44,9 +44,9 @@ useGltfFileDrop(networkMgr);
 
 <template>
   <v-layout full-height>
-    <v-main id="main">
+    <v-main id="main" class="viewer-main">
       <model-viewer-wrapper
-        v-if="sceneDocument.getRoot().listMeshes().length > 0"
+        v-if="sceneDocument.getRoot().listMeshes().length > 0 && sceneUrl"
         ref="viewer"
         :src="sceneUrl"
       />
@@ -93,5 +93,10 @@ html,
 body {
   height: 100%;
   overflow: hidden !important;
+}
+
+.viewer-main {
+  height: 100%;
+  min-height: 0;
 }
 </style>

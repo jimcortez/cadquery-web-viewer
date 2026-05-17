@@ -24,11 +24,9 @@ export function useAppModelLoading(
     if (viewer.value && event.models.length > 0) {
       viewer.value.onProgress(0.1);
     }
-    console.log("Received model update request", event.models);
     const shutdownRequestIndex = event.models.findIndex((model) => model.isRemove == null);
     let shutdownRequest: NetworkUpdateEventModel | null = null;
     if (shutdownRequestIndex !== -1) {
-      console.log("Will shut down the connection after this load, as requested by the server");
       shutdownRequest = event.models.splice(shutdownRequestIndex, 1)[0] ?? null;
     }
     let doc = sceneDocument.value;
@@ -49,7 +47,6 @@ export function useAppModelLoading(
       }
     }
     if (shutdownRequest !== null) {
-      console.log("Shutting down the connection as requested by the server");
       event.disconnect();
     }
     sceneDocument.value = doc;

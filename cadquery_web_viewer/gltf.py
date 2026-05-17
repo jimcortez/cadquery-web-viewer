@@ -80,8 +80,11 @@ class GLTFMgr:
                           extras={"edge_points_end": []}),
                 Primitive(indices=-1, attributes=Attributes(), mode=POINTS, material=0),
             ])],
-            materials=[Material(pbrMetallicRoughness=PbrMetallicRoughness(metallicFactor=0.1, roughnessFactor=1.0),
-                                alphaCutoff=None)],
+            materials=[Material(
+                pbrMetallicRoughness=PbrMetallicRoughness(metallicFactor=0.1, roughnessFactor=1.0),
+                alphaCutoff=None,
+                doubleSided=True,
+            )],
         )
         self.face_indices = []
         self.face_positions = []
@@ -179,6 +182,7 @@ class GLTFMgr:
             edges_and_vertices_mat = len(self.gltf.materials)
             new_mat = copy.deepcopy(self.gltf.materials[0])
             new_mat.pbrMetallicRoughness.baseColorTexture = None
+            new_mat.doubleSided = True
             self.gltf.materials.append(new_mat)
 
         # Treat edges and vertices the same way

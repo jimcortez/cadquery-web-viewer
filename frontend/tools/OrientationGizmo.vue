@@ -1,28 +1,35 @@
 <script lang="ts" setup>
-import {onMounted, onUpdated, ref} from "vue";
+import {onMounted, ref, watch} from "vue";
 import type {ModelScene} from "@google/model-viewer/lib/three-components/ModelScene";
 // @ts-expect-error
 import * as OrientationGizmoRaw from "three-orientation-gizmo/src/OrientationGizmo";
 import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
 import {currentSceneRotation} from "../viewer/lighting.ts";
 
-// Optimized minimal dependencies from three
-import {Vector3} from "three/src/math/Vector3.js";
-import {Matrix4} from "three/src/math/Matrix4.js";
-import {Euler} from "three/src/math/Euler.js";
-
-(globalThis as any).THREE = {Vector3, Matrix4} as any // HACK: Required for the gizmo to work
+import * as THREE from "three";
 
 const props = defineProps<{ viewer: InstanceType<typeof ModelViewerWrapper> }>();
 
 function createGizmo(expectedParent: HTMLElement, scene: ModelScene): HTMLElement {
-  // noinspection SpellCheckingInspection
-  let gizmo = new OrientationGizmoRaw.default(scene.camera, {
+  // three-orientation-gizmo expects a full THREE namespace on globalThis at construction time.
+  const prevTHREE = (globalThis as { THREE?: typeof THREE }).THREE;
+  (globalThis as { THREE: typeof THREE }).THREE = THREE;
+  let gizmo: ReturnType<typeof OrientationGizmoRaw.default>;
+  try {
+    // noinspection SpellCheckingInspection
+    gizmo = new OrientationGizmoRaw.default(scene.camera, {
     size: expectedParent.clientWidth,
     bubbleSizePrimary: expectedParent.clientWidth / 12,
     bubbleSizeSeconday: expectedParent.clientWidth / 12,
     fontSize: (expectedParent.clientWidth / 10) + "px",
-  });
+    });
+  } finally {
+    if (prevTHREE === undefined) {
+      delete (globalThis as { THREE?: typeof THREE }).THREE;
+    } else {
+      (globalThis as { THREE: typeof THREE }).THREE = prevTHREE;
+    }
+  }
   // Make sure all bubbles are labeled
   for (let bubble of gizmo.bubbles) {
     bubble.label = bubble.axis.toUpperCase();
@@ -67,27 +74,16 @@ let container = ref<HTMLElement | null>(null);
 
 let gizmo: HTMLElement & { update: () => void }
 
-function updateGizmo() {
-  if (gizmo.isConnected) {
-    // HACK: Update camera temporarily to match skybox rotation before updating the gizmo and go back
-    let prevRot = ((gizmo as any).camera).rotation.clone() as Euler;
-    let thetaMat = new Matrix4().makeRotationY(-currentSceneRotation);
-    ((gizmo as any).camera).rotation.setFromRotationMatrix(thetaMat.multiply(new Matrix4().makeRotationFromEuler(prevRot)));
-    gizmo.update();
-    ((gizmo as any).camera).rotation.set(prevRot.x, prevRot.y, prevRot.z);
-    requestIdleCallback(updateGizmo, {timeout: 250});
-  }
-}
-
 let reinstall = () => {
-  if (!container.value) return;
+  if (!container.value || !props.viewer.scene) return;
   if (gizmo) container.value.removeChild(gizmo);
-  gizmo = createGizmo(container.value, props.viewer.scene!! as any) as typeof gizmo;
+  gizmo = createGizmo(container.value, props.viewer.scene as ModelScene) as typeof gizmo;
   container.value.appendChild(gizmo);
-  requestIdleCallback(updateGizmo, {timeout: 250}); // Low priority updates
 }
-onMounted(reinstall)
-onUpdated(reinstall);
+// Defer gizmo install until the viewer scene is ready (avoids touching the camera too early).
+watch(() => props.viewer.scene, (scene) => {
+  if (scene) reinstall();
+}, {immediate: true});
 // onUnmounted is not needed because the gizmo is removed when the container is removed
 </script>
 

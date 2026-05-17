@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import {settings} from "../misc/settings";
-import { inject, onUpdated, type Ref, ref, watch } from "vue";
+import { computed, inject, nextTick, onUpdated, type Ref, ref, watch } from "vue";
 import { disableTapKey } from "../injectionKeys";
 import {$renderer, $scene} from "@google/model-viewer/lib/model-viewer-base";
 import {$controls} from '@google/model-viewer/lib/features/controls.js';
@@ -32,10 +32,17 @@ const controls = ref<SmoothControls | null>(null);
 const sett = ref<any | null>(null);
 (async () => sett.value = await settings)();
 
-let lastCameraTargetPosition: Vector3 | undefined = undefined;
-let lastCameraZoom: number | undefined = undefined;
-let lastCameraUrl = props.src.toString();
+const modelViewerEnvAttrs = computed(() => {
+  const s = sett.value;
+  if (!s) return {};
+  const attrs: Record<string, string> = {};
+  if (s.environment) attrs["environment-image"] = s.environment;
+  if (s.skybox) attrs["skybox-image"] = s.skybox;
+  return attrs;
+});
+
 let initialized = false
+
 onUpdated(() => {
   if (!elem.value) return; // Not ready yet
   if (initialized) return; // Already initialized
@@ -46,39 +53,19 @@ onUpdated(() => {
     scene.value = elem.value[$scene] as ModelScene;
     renderer.value = elem.value[$renderer] as Renderer;
     controls.value = (elem.value as any)[$controls] as SmoothControls;
-    // Recover the camera position if it was set before
-    if (lastCameraTargetPosition) {
-      // console.log("RESTORING camera position?", lastCameraTargetPosition);
-      scene.value.setTarget(-lastCameraTargetPosition.x, -lastCameraTargetPosition.y, -lastCameraTargetPosition.z);
-      scene.value.jumpToGoal(); // Avoid move animation
-    }
-    (async () => {
-      let tries = 0
-      while (tries++ < 25) {
-        if (!lastCameraZoom || !elem.value?.getCameraOrbit()?.radius) break;
-        let change = lastCameraZoom - elem.value.getCameraOrbit().radius;
-        //console.log("Zooming to", lastCameraZoom, "from", elem.value.getCameraOrbit().radius, "change", change);
-        if (Math.abs(change) < 0.001) break;
-        elem.value.zoom(-Math.sign(change) * (Math.pow(Math.abs(change) + 1, 0.9) - 1)); // Arbitrary, experimental
-        elem.value.jumpCameraToGoal();
-        await elem.value.updateComplete;
-      }
-      //console.log("Ready to save!")
-      lastCameraUrl = props.src.toString();
-    })();
+    revealCanvas();
   });
   elem.value.addEventListener('camera-change', onCameraChange);
-  elem.value.addEventListener('progress', (ev) => onProgress((ev as any).detail.totalProgress));
+  elem.value.addEventListener('progress', (ev) => {
+    const totalProgress = (ev as CustomEvent<{ totalProgress: number }>).detail.totalProgress;
+    onProgress(totalProgress);
+    if (totalProgress >= 1) revealCanvas();
+  });
+  elem.value.addEventListener('load', revealCanvas);
   setupLighting(elem.value);
 });
 
 function onCameraChange() {
-  // Remember the camera position to keep it in case of scene changes
-  if (scene.value && props.src.toString() == lastCameraUrl) {  // Don't overwrite with initial unwanted positions
-    lastCameraTargetPosition = scene.value.target.position.clone();
-    lastCameraZoom = elem.value?.getCameraOrbit()?.radius;
-    //console.log("Saving camera?", lastCameraTargetPosition, lastCameraZoom);
-  }
   // Also need to update the SVG overlay
   for (let lineId in lines.value) {
     onCameraChangeLine(lineId as any);
@@ -108,6 +95,15 @@ const onProgress = (totalProgress: number) => {
 };
 
 const poster = ref<string>("")
+
+/** model-viewer keeps the WebGL canvas hidden until the poster is dismissed. */
+function revealCanvas() {
+  if (!elem.value?.loaded) return;
+  poster.value = "";
+  elem.value.dismissPoster();
+  (elem.value[$scene] as ModelScene).queueRender();
+}
+
 const setPosterText = (newText: string) => {
   poster.value = "data:image/svg+xml;charset=utf-8;base64," + btoa(
       '<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg" fill="gray">' +
@@ -116,7 +112,9 @@ const setPosterText = (newText: string) => {
       '</text>' +
       '</svg>')
 }
-setPosterText("Loading...")
+watch(() => props.src, () => {
+  void nextTick(revealCanvas);
+});
 
 class Line3DData {
   startHotspot: HTMLElement = document.body
@@ -215,19 +213,23 @@ watch(disableTap, (newDisableTap) => {
 
 <template>
   <!-- The main 3D model viewer -->
+  <div class="viewer-host">
   <model-viewer ref="elem" v-if="sett != null" :ar="sett.arModes.length > 0" :ar-modes="sett.arModes"
-                :environment-image="sett.environment" :exposure="sett.exposure" :autoplay="sett.autoplay"
+                v-bind="modelViewerEnvAttrs"
+                :exposure="sett.exposure" :autoplay="sett.autoplay"
                 :orbit-sensitivity="sett.orbitSensitivity" :pan-sensitivity="sett.panSensitivity"
-                :poster="poster" :shadow-intensity="sett.shadowIntensity" :skybox-image="sett.skybox"
+                :poster="poster || undefined" :shadow-intensity="sett.shadowIntensity"
+                :background-color="sett.backgroundColor"
                 :src="props.src" :zoom-sensitivity="sett.zoomSensitivity" alt="The 3D model(s)" camera-controls
                 camera-orbit="45deg 45deg auto" interaction-prompt="none" max-camera-orbit="Infinity 180deg auto"
-                min-camera-orbit="-Infinity 0deg 5%" style="width: 100%; height: 100%">
+                min-camera-orbit="-Infinity 0deg 5%" reveal="auto" style="width: 100%; height: 100%">
     <slot></slot>
     <!-- Add a progress bar to the top of the model viewer -->
     <div ref="progressBar" slot="progress-bar" class="progress-bar">
       <div ref="updateBar" class="update-bar"/>
     </div>
   </model-viewer>
+  </div>
 
   <!-- The SVG overlay for fake 3D lines attached to the model -->
   <div class="overlay-svg-wrapper">
@@ -255,6 +257,13 @@ watch(disableTap, (newDisableTap) => {
 </template>
 
 <style scoped>
+.viewer-host {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
 /* This keeps child nodes hidden while the element loads */
 :not(:defined) > * {
   display: none;

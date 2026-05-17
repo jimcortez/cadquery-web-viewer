@@ -2,12 +2,19 @@ import {settings} from "./settings";
 
 const batchTimeout = 250; // ms
 
+type SceneEvent = {
+    type: string;
+    name?: string;
+    hash?: string;
+    version?: number;
+    except_names?: string[];
+};
+
 export class NetworkUpdateEventModel {
     name: string;
     url: string | Blob;
-    // TODO: Detect and manage instances of the same object (same hash, different name)
     hash: string | null;
-    isRemove: boolean | null; // This is null for a shutdown event
+    isRemove: boolean | null;
 
     constructor(name: string, url: string | Blob, hash: string | null, isRemove: boolean | null) {
         this.name = name;
@@ -28,27 +35,35 @@ export class NetworkUpdateEvent extends Event {
     }
 }
 
+function versionFromObjectUrl(url: string | Blob): number | null {
+    if (url instanceof Blob) return null;
+    try {
+        const raw = new URL(url).searchParams.get("version");
+        if (raw == null) return null;
+        const v = parseInt(raw, 10);
+        return Number.isFinite(v) ? v : null;
+    } catch {
+        return null;
+    }
+}
+
 /** Listens for updates and emits events when a model changes */
 export class NetworkManager extends EventTarget {
     private knownObjectHashes: { [name: string]: string | null } = {};
+    private knownObjectVersions: { [name: string]: number } = {};
+    private knownObjectNames = new Set<string>();
     private bufferedUpdates: NetworkUpdateEventModel[] = [];
     private batchTimeout: number | null = null;
 
-    /**
-     * Tries to load a new model (.glb) from the given URL.
-     *
-     * If the URL uses the websocket protocol (ws:// or wss://), the server will be continuously monitored for changes.
-     * In this case, it will only trigger updates if the name or hash of any model changes.
-     *
-     * Updates will be emitted as "update" events, including the download URL and the model name.
-     */
     async load(url: string | Blob) {
         if (!(url instanceof Blob) && (url.startsWith("dev+") || url.startsWith("dev "))) {
             let baseUrl = new URL(url.slice(4).trim());
-            if (!baseUrl.pathname.endsWith("/api/updates")) {
-                baseUrl.pathname = baseUrl.pathname.replace(/\/?$/, "") + "/api/updates";
-                baseUrl.search = "";
+            if (baseUrl.pathname.endsWith("/api/updates")) {
+                baseUrl.pathname = baseUrl.pathname.replace(/\/api\/updates\/?$/, "/api/events");
+            } else if (!baseUrl.pathname.endsWith("/api/events")) {
+                baseUrl.pathname = baseUrl.pathname.replace(/\/?$/, "") + "/api/events";
             }
+            baseUrl.search = "";
             await this.monitorDevServer(baseUrl);
         } else {
             let name;
@@ -58,7 +73,6 @@ export class NetworkManager extends EventTarget {
                 else name = `blob-${Math.random()}`;
                 name = name.replace('.glb', '').replace('.gltf', '');
             } else {
-                // If there is a #name parameter in the URL, use it as the name
                 let hashParams: URLSearchParams
                 try {
                     let urlObj = new URL(url, window.location.href);
@@ -68,16 +82,70 @@ export class NetworkManager extends EventTarget {
                 }
                 if (hashParams.has("name")) {
                     name = hashParams.get("name") || `unknown-${Math.random()}`;
-                } else { // Default to the last part of the URL as the "name" of the model
+                } else {
                     name = url.split("/").pop();
                 }
                 name = name?.split(".")[0] || `unknown-${Math.random()}`;
-                // Use a head request to get the hash of the file
                 let response = await fetch(url, {method: "HEAD"});
                 hash = response.headers.get("etag");
             }
-            // Only trigger an update if the hash has changed
             this.foundModel(name, hash, url, false);
+        }
+    }
+
+    private handleSceneEvent(data: SceneEvent, origin: string, disconnect: () => void) {
+        switch (data.type) {
+            case "server.shutdown":
+                this.foundModel("", null, "", null, disconnect);
+                break;
+            case "scene.cleared": {
+                const except = new Set(data.except_names || []);
+                const removals: NetworkUpdateEventModel[] = [];
+                for (const name of this.knownObjectNames) {
+                    if (!except.has(name)) {
+                        removals.push(
+                            new NetworkUpdateEventModel(name, "", this.knownObjectHashes[name] ?? null, true),
+                        );
+                    }
+                }
+                for (const name of Object.keys(this.knownObjectHashes)) {
+                    delete this.knownObjectHashes[name];
+                }
+                for (const name of Object.keys(this.knownObjectVersions)) {
+                    delete this.knownObjectVersions[name];
+                }
+                for (const name of this.knownObjectNames) {
+                    if (!except.has(name)) this.knownObjectNames.delete(name);
+                }
+                if (removals.length > 0) {
+                    this.dispatchEvent(new NetworkUpdateEvent(removals, disconnect));
+                }
+                break;
+            }
+            case "object.removed":
+                if (data.name) {
+                    const objectUrl = new URL(
+                        "/api/object/" + encodeURIComponent(data.name),
+                        origin,
+                    );
+                    this.foundModel(data.name, data.hash ?? null, objectUrl.toString(), true, disconnect);
+                }
+                break;
+            case "object.created":
+            case "object.versioned":
+                if (data.name) {
+                    const objectUrl = new URL(
+                        "/api/object/" + encodeURIComponent(data.name),
+                        origin,
+                    );
+                    if (data.version != null) {
+                        objectUrl.searchParams.set("version", String(data.version));
+                    }
+                    this.foundModel(data.name, data.hash ?? null, objectUrl.toString(), false, disconnect);
+                }
+                break;
+            default:
+                console.warn("Unknown scene event type", data);
         }
     }
 
@@ -85,28 +153,23 @@ export class NetworkManager extends EventTarget {
         while (!stop()) {
             let monitorEveryMs = (await settings).monitorEveryMs;
             try {
-                // WARNING: This will spam the console logs with failed requests when the server is down
                 const controller = new AbortController();
                 let response = await fetch(url.toString(), {signal: controller.signal});
-                // console.log("Monitoring", url.toString(), response);
                 if (response.status === 200) {
                     let lines = readLinesStreamings(response.body!.getReader());
                     for await (let line of lines) {
                         if (stop()) break;
                         if (!line || !line.startsWith("data:")) continue;
-                        let data: { name: string, hash: string, is_remove: boolean | null } = JSON.parse(line.slice(5));
-                        // console.debug("WebSocket message", data);
-                        let objectUrl = new URL("/api/object/" + encodeURIComponent(data.name), url.origin);
-                        this.foundModel(data.name, data.hash, objectUrl.toString(), data.is_remove, async () => {
-                            controller.abort(); // Notify the server that we are done
+                        let data: SceneEvent = JSON.parse(line.slice(5).trim());
+                        this.handleSceneEvent(data, url.origin, async () => {
+                            controller.abort();
                         });
                     }
                 } else {
-                    // Server is down, wait a little longer before retrying
                     await new Promise(resolve => setTimeout(resolve, 10 * monitorEveryMs));
                 }
                 controller.abort();
-            } catch (e) { // Ignore errors (retry very soon)
+            } catch (e) {
             }
             await new Promise(resolve => setTimeout(resolve, monitorEveryMs));
         }
@@ -114,44 +177,61 @@ export class NetworkManager extends EventTarget {
 
     private foundModel(name: string, hash: string | null, url: string | Blob, isRemove: boolean | null, disconnect: () => void = () => {
     }) {
-        // console.debug("Found model", name, "with hash", hash, "at", url, "isRemove", isRemove);
+        if (isRemove === null) {
+            this.bufferedUpdates = this.bufferedUpdates.filter(m => m.name !== name);
+            let upd = new NetworkUpdateEventModel(name, url, hash, isRemove);
+            this.bufferedUpdates.push(upd);
+            this.dispatchEvent(new CustomEvent("update-early", {detail: this.bufferedUpdates}));
+            if (this.batchTimeout !== null) clearTimeout(this.batchTimeout);
+            this.batchTimeout = setTimeout(() => {
+                this.dispatchEvent(new NetworkUpdateEvent(this.bufferedUpdates, disconnect));
+                this.bufferedUpdates = [];
+            }, batchTimeout);
+            return;
+        }
 
-        // We only care about the latest update per model name
         this.bufferedUpdates = this.bufferedUpdates.filter(m => m.name !== name);
 
-        // Add the new model to the list of updates and dispatch the early update
         let upd = new NetworkUpdateEventModel(name, url, hash, isRemove);
         this.bufferedUpdates.push(upd);
         this.dispatchEvent(new CustomEvent("update-early", {detail: this.bufferedUpdates}));
 
-        // Optimization: try to batch updates automatically for faster rendering
         if (this.batchTimeout !== null) clearTimeout(this.batchTimeout);
         this.batchTimeout = setTimeout(() => {
-            // Update known hashes for minimal updates
             for (let model of this.bufferedUpdates) {
-                if (model.isRemove == false && model.hash && model.hash === this.knownObjectHashes[model.name]) {
-                    // Delete this useless update
-                    let foundFirst = false;
-                    this.bufferedUpdates = this.bufferedUpdates.filter(m => {
-                        if (m === model) {
-                            if (!foundFirst) { // Remove only first full match
-                                foundFirst = true;
-                                return false;
+                if (model.isRemove == false) {
+                    const version = versionFromObjectUrl(model.url);
+                    const sameHash =
+                        model.hash != null && model.hash === this.knownObjectHashes[model.name];
+                    const sameVersion =
+                        version != null && version === this.knownObjectVersions[model.name];
+                    if (sameHash && (version == null || sameVersion)) {
+                        let foundFirst = false;
+                        this.bufferedUpdates = this.bufferedUpdates.filter(m => {
+                            if (m === model) {
+                                if (!foundFirst) {
+                                    foundFirst = true;
+                                    return false;
+                                }
                             }
-                        }
-                        return true;
-                    })
-                } else {
-                    // Keep this update and update the last known hash
-                    if (model.isRemove == true) {
-                        if (model.name in this.knownObjectHashes) delete this.knownObjectHashes[model.name];
-                    } else if (model.isRemove == false) {
-                        this.knownObjectHashes[model.name] = model.hash;
+                            return true;
+                        });
+                        continue;
                     }
+                }
+                if (model.isRemove == true) {
+                    delete this.knownObjectHashes[model.name];
+                    delete this.knownObjectVersions[model.name];
+                    this.knownObjectNames.delete(model.name);
+                } else if (model.isRemove == false) {
+                    this.knownObjectHashes[model.name] = model.hash;
+                    const version = versionFromObjectUrl(model.url);
+                    if (version != null) this.knownObjectVersions[model.name] = version;
+                    else delete this.knownObjectVersions[model.name];
+                    this.knownObjectNames.add(model.name);
                 }
             }
 
-            // Dispatch the event to actually update the models
             this.dispatchEvent(new NetworkUpdateEvent(this.bufferedUpdates, disconnect));
             this.bufferedUpdates = [];
         }, batchTimeout);
@@ -159,17 +239,22 @@ export class NetworkManager extends EventTarget {
 }
 
 async function* readLinesStreamings(reader: ReadableStreamDefaultReader<Uint8Array>) {
-    let decoder = new TextDecoder();
-    let buffer = new Uint8Array();
+    const decoder = new TextDecoder();
+    let pending = "";
     while (true) {
-        let {value, done} = await reader.read();
-        if (done || !value) break;
-        buffer = new Uint8Array([...buffer, ...value]);
-        let text = decoder.decode(buffer);
-        let lines = text.split("\n");
-        for (let i = 0; i < lines.length - 1; i++) {
-            yield lines[i];
+        const {value, done} = await reader.read();
+        if (done) break;
+        if (!value?.length) continue;
+        pending += decoder.decode(value, {stream: true});
+        let newlineAt = pending.indexOf("\n");
+        while (newlineAt !== -1) {
+            yield pending.slice(0, newlineAt);
+            pending = pending.slice(newlineAt + 1);
+            newlineAt = pending.indexOf("\n");
         }
-        buffer = new Uint8Array([...buffer.slice(-1)]);
+    }
+    pending += decoder.decode();
+    if (pending.length > 0) {
+        yield pending;
     }
 }

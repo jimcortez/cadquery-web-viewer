@@ -10,15 +10,8 @@ import {Matrix4} from "three/src/math/Matrix4.js"
 export class SceneMgr {
     /** Loads a GLB model from a URL and adds it to the viewer or replaces it if the names match */
     static async loadModel(sceneUrl: Ref<string>, document: Document, name: string, url: string | Blob, updateHelpers: boolean = true, reloadScene: boolean = true): Promise<Document> {
-        let loadStart = performance.now();
-        let loadNetworkEnd: number;
-
         try {
-            // Start merging into the current document, replacing or adding as needed
-            document = await mergePartial(url, name, document, () => loadNetworkEnd = performance.now());
-
-            console.log("Model", name, "loaded in", performance.now() - loadNetworkEnd!, "ms after",
-                loadNetworkEnd! - loadStart, "ms of transferring data (maybe building the object on the server)");
+            document = await mergePartial(url, name, document);
         } finally {
             if (updateHelpers) {
                 // Reload the helpers to fit the new model
@@ -27,10 +20,7 @@ export class SceneMgr {
             }
 
             if (reloadScene) {
-                // Display the final fully loaded model
-                let displayStart = performance.now();
                 document = await this.showCurrentDoc(sceneUrl, document);
-                console.log("Scene displayed in", performance.now() - displayStart, "ms");
             }
         }
 
@@ -63,12 +53,7 @@ export class SceneMgr {
 
     /** Removes a model from the viewer */
     static async removeModel(sceneUrl: Ref<string>, document: Document, name: string, updateHelpers: boolean = true, reloadScene: boolean = true): Promise<Document> {
-        let loadStart = performance.now();
-
-        // Remove the model from the document
         document = await removeModel(name, document)
-
-        console.log("Model", name, "removed in", performance.now() - loadStart, "ms");
 
         if (updateHelpers) {
             // Reload the helpers to fit the new model (will also show the document)
@@ -113,7 +98,6 @@ export class SceneMgr {
         // Serialize the document into a GLB and update the viewerSrc
         let buffer = await toBuffer(document);
         let blob = new Blob([buffer as ArrayBufferView<ArrayBuffer>], {type: 'model/gltf-binary'});
-        console.debug("Showing current doc", document, "with", buffer.length, "total bytes");
         if (sceneUrl.value.startsWith("blob:")) URL.revokeObjectURL(sceneUrl.value);
         sceneUrl.value = URL.createObjectURL(blob);
 

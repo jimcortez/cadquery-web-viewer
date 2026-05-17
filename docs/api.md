@@ -1,151 +1,180 @@
 # HTTP API
 
-The `cadquery-web-viewer` Flask app serves the browser UI plus a small JSON/multipart API under **`/api`**. Unless noted, responses include broad CORS headers (`Access-Control-Allow-Origin: *`, and on **`OPTIONS`** requests the methods/headers Flask wires for preflight).
+The `cadquery-web-viewer` Flask app serves the browser UI plus a REST API under **`/api`**. Unless noted, responses include broad CORS headers (`Access-Control-Allow-Origin: *`, and on **`OPTIONS`** the methods/headers listed below).
 
 Assumed base URL: `http://<host>:<port>` (default port **32323**). Interactive use from Python is described in [usage.md](usage.md).
 
 ---
 
-## `GET` / `HEAD` `OPTIONS` — `/api/updates`
+## Typical remote workflow
 
-Server-Sent Events (**SSE**) stream of scene updates for the viewer.
+1. **`PUT /api/object/<name>`** — store a GLB version (does not update the viewer).
+2. **`POST /api/events`** — publish `object.created` or `object.versioned` so subscribers load the model.
+3. The viewer **`GET /api/object/<name>?version=<n>`** — download the GLB bytes.
+
+---
+
+## `/api/events`
+
+Scene notifications (Server-Sent Events + publish). No GLB bodies on this resource.
+
+### `GET` / `HEAD` / `OPTIONS`
 
 | Method | Behavior |
 |--------|----------|
-| `GET` | `Content-Type: text/event-stream`, `Cache-Control: no-cache`. Body is an SSE stream. |
-| `HEAD` | Same content type; empty body (no stream). |
-| `OPTIONS` | `204 No Content` with CORS headers. |
+| `GET` | `Content-Type: text/event-stream`, `Cache-Control: no-cache`. SSE stream. |
+| `HEAD` | Same content type; empty body. |
+| `OPTIONS` | `204` with CORS. |
 
-Stream behavior:
+Stream: `retry: 100`, periodic `:keep-alive` comments, each event one `data: ` line (compact JSON).
 
-- First lines include `retry: 100` (reconnect hint in milliseconds).
-- Periodic comment frames `:keep-alive` may appear when nothing else is published.
-- Each event **`data`** line is a single JSON object (compact encoding, no extra whitespace), matching the shape below.
+### Event types
 
-### SSE payload (`data:` JSON)
+| `type` | Meaning | Viewer |
+|--------|---------|--------|
+| `object.created` | New object in scene | Add draw-list entry; fetch GLB |
+| `object.versioned` | New version of existing name | Replace model; fetch GLB |
+| `object.removed` | Remove from scene | Remove draw-list entry |
+| `scene.cleared` | Clear scene | Clear except `except_names` |
+| `server.shutdown` | Server stopping | Disconnect |
 
-Derived from `UpdatesApiData` in the server (`name`, `hash`, optional `is_remove`):
-
-| Field | Type | Meaning |
-|-------|------|---------|
-| `name` | string | Object identifier (must match `/api/object/...` paths). |
-| `hash` | string | Content fingerprint so clients can skip redundant reloads when unchanged. |
-| `is_remove` | boolean \| omitted | When `true`, remove this object from the scene. When omitted or `false`, show/update it. |
-
-Example (show or update):
+**`object.created` / `object.versioned`** (required fields: `name`, `version`, `hash`):
 
 ```json
-{"name":"part_a","hash":"abc123","is_remove":false}
+{"type":"object.created","name":"part_a","version":1,"hash":"abc123"}
 ```
 
-Example (remove):
+**`object.removed`:**
 
 ```json
-{"name":"part_a","hash":"abc123","is_remove":true}
+{"type":"object.removed","name":"part_a","hash":"abc123"}
 ```
 
----
-
-## `GET` / `HEAD` `OPTIONS` — `/api/object/<name>`
-
-Download the GLB for a shown object. `<name>` is a URL path segment; reserved characters should be percent-encoded (the server applies `urllib.parse.unquote`).
-
-| Method | Behavior |
-|--------|----------|
-| `GET` | `200`: body is raw GLB (`Content-Type: model/gltf-binary`). Headers include `Content-Disposition: attachment; filename="<name>.glb"` and `E-Tag: "<etag>"`. |
-| `HEAD` | Same headers as `GET`; `Content-Length` set to GLB size; empty body. |
-| `OPTIONS` | `204` with CORS headers. |
-
-| Status | Meaning |
-|--------|---------|
-| `404` | No such object (or nothing to export). |
-
----
-
-## `POST` `OPTIONS` — `/api/show`
-
-Upload a pre-built GLB and register it like an in-process `show()` of raw bytes.
-
-**Content type:** `multipart/form-data` with exactly:
-
-| Part | Required | Description |
-|------|----------|-------------|
-| `glb` | yes | File field: binary GLB (`model/gltf-binary`). |
-| `metadata` | yes | Form field: JSON **object** (string). |
-
-### `metadata` JSON fields
-
-| Field | Required | Type | Description |
-|-------|----------|------|-------------|
-| `name` | yes | string | Unique object name (overwrites prior uploads with the same name). |
-| `hash` | yes | string | Hash string stored with the object (clients use it in SSE payloads). |
-| `auto_clear` | no | boolean | Default `false`. If `true`, clears existing objects before applying this upload (see `except_names`). |
-| `except_names` | no | string[] | When `auto_clear` is true: names **not** removed during that clear. Must be a JSON array of strings if present. |
-| `kwargs` | no | object | Optional viewer/metadata dict (same role as keyword args on Python `show()`). Must be a JSON object if present; arbitrary keys supported server-side. |
-
-On success: `200`, `Content-Type: application/json`, body `{"ok":true}`.
-
-| Error | Typical cause |
-|-------|----------------|
-| `400` | Missing `glb` or `metadata`, invalid JSON in `metadata`, missing `name`/`hash`, or `except_names` not a list. |
-
-Disk cache (when the server runs with `--cache-mode disk`): a successful upload is also written through to the configured cache directory.
-
----
-
-## `POST` `OPTIONS` — `/api/remove`
-
-Remove one object by name.
-
-**Content type:** `application/json`
-
-Body:
+**`scene.cleared`:**
 
 ```json
-{"name":"part_a"}
+{"type":"scene.cleared","except_names":["fixture"]}
 ```
 
-`name` must be a non-empty string.
+**`server.shutdown`:**
 
-Success: `200`, body `{"ok":true}`.
+```json
+{"type":"server.shutdown"}
+```
 
-| Error | Typical cause |
-|-------|----------------|
-| `400` | Missing or non-string `name`. |
+### `POST /api/events`
 
-With disk cache enabled, the cached entry for that name is deleted.
+Publish one event or a batch.
 
----
+**Content-Type:** `application/json`
 
-## `POST` `OPTIONS` — `/api/clear`
+Single event: one envelope object. Batch: `{"events":[...]}`.
 
-Remove **all** shown objects.
+Validation: `object.created` / `object.versioned` require a matching stored `name`, `version`, and `hash`. `object.created` fails with **`409`** if the name is already in the scene. `object.versioned` fails with **`409`** if the name is not in the scene.
 
-**Content type:** `application/json`
-
-Body may be an empty object `{}` (what the bundled Python client sends).
-
-Success: `200`, body `{"ok":true}`.
-
-With disk cache enabled, the cache is cleared as well.
+**Success:** `204 No Content`.
 
 ---
 
-## Static UI (not under `/api`)
+## `/api/object`
+
+Versioned GLB storage. Object-level **`notes`** and **`settings`** apply to all versions of a name.
+
+### `GET /api/object`
+
+List all objects. One row per name; top-level `version` / `hash` / `created_at` / `kwargs` are the **latest** version; `versions` lists older versions **newest first** (excluding latest).
+
+```json
+{
+  "objects": [
+    {
+      "name": "part_a",
+      "notes": null,
+      "settings": {},
+      "version": 2,
+      "hash": "...",
+      "kwargs": {},
+      "created_at": "2026-05-16T18:30:00.123Z",
+      "in_memory": true,
+      "on_disk": true,
+      "versions": [
+        {"version": 1, "hash": "...", "created_at": "2026-05-16T16:00:00.000Z"}
+      ]
+    }
+  ]
+}
+```
+
+`created_at` values are ISO 8601 UTC (e.g. `2026-05-16T18:30:00.123Z`).
+
+### `PUT /api/object/<name>`
+
+Store a GLB version. **Does not** publish SSE.
+
+**Multipart:** `glb` (file), `metadata` (JSON string with `hash`, optional `kwargs`). Name comes from the URL path only.
+
+| Query | Behavior |
+|-------|----------|
+| *(none)* | Next version (`1`, `2`, …) |
+| `force-version=<n>` | Create or overwrite version `n` |
+
+**Success:** `201` + `{"name","version","hash"}` and header `X-Object-Version`.
+
+### `GET` / `HEAD` `/api/object/<name>`
+
+| `Accept` | Behavior |
+|----------|----------|
+| `model/gltf-binary` (default) | GLB for latest or `?version=<n>` |
+| `application/json` | Object descriptor (no GLB body) |
+
+`E-Tag` on binary responses: `"<hash>-v<n>"`.
+
+### `PATCH /api/object/<name>`
+
+Update `name` (rename), `notes`, and/or `settings`. Does not upload GLB or publish events.
+
+**JSON body** (at least one field):
+
+| Field | Behavior |
+|-------|----------|
+| `name` | Rename; moves all versions; **`409`** if taken |
+| `notes` | Set or `null` to clear |
+| `settings` | Merge keys; `null` value removes a key. Values: string, number, or `null` only |
+
+**Success:** `200` + full object descriptor (same shape as JSON `GET`).
+
+### `DELETE /api/object/<name>`
+
+| Query | Behavior |
+|-------|----------|
+| *(none)* | Delete all versions; auto-publish `object.removed` if in scene |
+| `force-version=<n>` | Delete one version only |
+
+**Success:** `204`.
+
+### `DELETE /api/object`
+
+Delete all stored objects. Does not publish `scene.cleared` (call `POST /api/events` separately if needed).
+
+---
+
+## Static UI
 
 | Route | Behavior |
 |-------|----------|
-| `GET /` | Serves `index.html` from the bundled frontend (or repo `dist/` in dev layouts). **`503`** if no frontend bundle is found. |
-| `GET /<path>` | Serves a file under the frontend root if it exists and resolves safely below that root. Requests whose path starts with `api/` are rejected with **`404`** so they do not shadow the blueprint. Otherwise, if no file matches, **`index.html`** is returned when present (**SPA fallback**). **`503`** if no frontend. |
+| `GET /` | `index.html` from bundled frontend. **`503`** if missing. |
+| `GET /<path>` | Static assets or SPA fallback. Paths starting with `api/` → **`404`**. |
 
 ---
 
-## Python client parity
+## Python client
 
-The package helpers in `cadquery_web_viewer.http_client` call:
+Helpers in `cadquery_web_viewer.http_client`:
 
-- `POST /api/show` — multipart as above (`remote_show`).
-- `POST /api/remove` with `{"name": ...}` (`remote_remove`).
-- `POST /api/clear` with `{}` (`remote_clear`).
+- `remote_show` — `PUT` each object, then `POST /api/events` (`scene.cleared` + `object.created` / `object.versioned`).
+- `remote_remove` — `DELETE /api/object/<name>`.
+- `remote_clear` — `POST scene.cleared` + `DELETE /api/object`.
+- `remote_list_objects` — `GET /api/object`.
+- `remote_patch_object` — `PATCH /api/object/<name>`.
 
-Texture tuples in `kwargs` are encoded for JSON as `data:<mime>;base64,...` strings before upload.
+Texture tuples in upload `kwargs` are encoded as `data:<mime>;base64,...` in JSON metadata.

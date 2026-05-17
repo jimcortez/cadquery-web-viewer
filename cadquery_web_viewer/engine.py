@@ -8,7 +8,7 @@ import os
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from io import BytesIO
 from pathlib import Path
@@ -22,7 +22,20 @@ from OCP.TopoDS import TopoDS_Shape
 from PIL import Image
 
 from cadquery_web_viewer.cad import CADCoreLike, CADLike, ColorTuple, _hashcode, get_color, get_shape, grab_all_cad
+from cadquery_web_viewer.events_api import (
+    OBJECT_CREATED,
+    OBJECT_REMOVED,
+    OBJECT_VERSIONED,
+    SCENE_CLEARED,
+    SERVER_SHUTDOWN,
+    validate_event,
+)
 from cadquery_web_viewer.gltf import get_version
+from cadquery_web_viewer.object_store import (
+    VersionedObjectStore,
+    describe_object_record,
+    validate_settings_map,
+)
 from cadquery_web_viewer.pubsub import BufferedPubSub
 from cadquery_web_viewer.rwlock import RWLock
 from cadquery_web_viewer.tessellate import tessellate
@@ -30,46 +43,25 @@ from cadquery_web_viewer.tessellate import tessellate
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class UpdatesApiData:
-    """Data sent to the client through the updates API"""
-
-    name: str
-    """Name of the object. Should be unique unless you want to overwrite the previous object"""
-    hash: str
-    """Hash of the object, to detect changes without rebuilding the object"""
-    is_remove: bool | None = None
-    """Whether to remove the object from the scene. If None, this is a shutdown request"""
-
-    def to_json(self) -> str:
-        return json.dumps(asdict(self), separators=(",", ":"))
-
-
 CadQueryWebViewerObject = Union[bytes, CADCoreLike]
 
 
-@dataclass
-class UpdatesApiFullData:
-    """Wire metadata plus in-process payload; ``obj`` and ``kwargs`` are not serialized."""
+class ScenePublishError(Exception):
+    """Invalid or conflicting scene event."""
 
-    meta: UpdatesApiData
+    def __init__(self, message: str, status_code: int = 400) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+@dataclass
+class _CadShowPayload:
+    """In-process tessellation payload (not sent over SSE)."""
+
+    name: str
+    hash: str
     obj: CadQueryWebViewerObject
     kwargs: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def name(self) -> str:
-        return self.meta.name
-
-    @property
-    def hash(self) -> str:
-        return self.meta.hash
-
-    @property
-    def is_remove(self) -> bool | None:
-        return self.meta.is_remove
-
-    def to_json(self) -> str:
-        return self.meta.to_json()
 
 
 class CadQueryWebViewerProtocol(Enum):
@@ -92,12 +84,11 @@ class CadQueryWebViewer:
     """Event to signal when the server has started"""
 
     # Running
-    show_events: BufferedPubSub[UpdatesApiFullData]
-    """PubSub for show events (objects to be shown in/removed from the scene)"""
-    build_events: dict[str, BufferedPubSub[bytes]]
-    """PubSub for build events (objects that were built)"""
+    object_store: VersionedObjectStore
+    scene_events: BufferedPubSub[dict[str, Any]]
+    """PubSub for typed scene event envelopes (``/api/events`` SSE)."""
     build_events_lock: threading.Lock
-    """Lock to ensure that objects are only built once"""
+    """Lock for object store and scene state mutations."""
 
     # Shutdown
     at_least_one_client: threading.Event
@@ -108,7 +99,9 @@ class CadQueryWebViewer:
     """Lock to ensure that the frontend has finished working before we shut down"""
 
     _sse_stream_count: int
-    """Active ``GET /api/updates`` SSE streams (see ``register_sse_stream_begin``)."""
+    """Active ``GET /api/events`` SSE streams (see ``register_sse_stream_begin``)."""
+    _scene_active: set[str]
+    """Object names currently published to the scene."""
     _sse_idle_cv: threading.Condition
     """Notified when ``_sse_stream_count`` drops to zero."""
 
@@ -158,9 +151,10 @@ class CadQueryWebViewer:
         self.server_thread = None
         self.server = None
         self.startup_complete = threading.Event()
-        self.show_events = BufferedPubSub()
-        self.build_events = {}
-        self.build_events_lock = threading.Lock()
+        self.object_store = VersionedObjectStore()
+        self.scene_events = BufferedPubSub()
+        self.build_events_lock = threading.RLock()
+        self._scene_active = set()
         self.at_least_one_client = threading.Event()
         self.shutting_down = threading.Event()
         self.frontend_lock = RWLock()
@@ -187,7 +181,7 @@ class CadQueryWebViewer:
             return
 
     def register_sse_stream_begin(self) -> None:
-        """Increment active SSE stream count (``GET /api/updates``)."""
+        """Increment active SSE stream count (``GET /api/events``)."""
         with self._sse_idle_cv:
             self._sse_stream_count += 1
             self.at_least_one_client.set()
@@ -216,9 +210,199 @@ class CadQueryWebViewer:
                 self._sse_idle_cv.wait(timeout=remaining)
             return True
 
-    def _show_event(self, event: UpdatesApiFullData):
-        """Handles a show event by publishing it to the show events buffer."""
-        self.show_events.publish(event)
+    def scene_has_name(self, name: str) -> bool:
+        with self.build_events_lock:
+            return name in self._scene_active
+
+    def publish_event(self, envelope: dict[str, Any]) -> None:
+        validate_event(envelope)
+        with self.build_events_lock:
+            self._apply_scene_event(envelope)
+            self._prune_stale_buffered_events(envelope)
+            self.scene_events.publish(dict(envelope))
+
+    def _prune_stale_buffered_events(self, envelope: dict[str, Any]) -> None:
+        """Remove buffered create/version events superseded by remove or clear."""
+        t = envelope["type"]
+        create_types = (OBJECT_CREATED, OBJECT_VERSIONED)
+        if t == OBJECT_REMOVED:
+            name = envelope["name"]
+
+            def stale(ev: dict[str, Any]) -> bool:
+                return ev.get("type") in create_types and ev.get("name") == name
+
+            self.scene_events.prune_buffer(stale)
+        elif t == SCENE_CLEARED:
+            except_names = set(envelope.get("except_names") or [])
+
+            def stale(ev: dict[str, Any]) -> bool:
+                return ev.get("type") in create_types and ev.get("name") not in except_names
+
+            self.scene_events.prune_buffer(stale)
+
+    def _apply_scene_event(self, envelope: dict[str, Any]) -> None:
+        t = envelope["type"]
+        if t == OBJECT_CREATED:
+            if envelope["name"] in self._scene_active:
+                raise ScenePublishError(
+                    f"{envelope['name']!r} is already in the scene; use object.versioned",
+                    409,
+                )
+            self._scene_active.add(envelope["name"])
+        elif t == OBJECT_VERSIONED:
+            if envelope["name"] not in self._scene_active:
+                raise ScenePublishError(
+                    f"{envelope['name']!r} is not in the scene; use object.created",
+                    409,
+                )
+        elif t == OBJECT_REMOVED:
+            self._scene_active.discard(envelope["name"])
+        elif t == SCENE_CLEARED:
+            except_names = set(envelope.get("except_names") or [])
+            self._scene_active = {n for n in self._scene_active if n in except_names}
+        elif t == SERVER_SHUTDOWN:
+            pass
+
+    def _verify_object_version(self, name: str, version: int, content_hash: str) -> None:
+        sv = self.object_store.get_version(name, version)
+        if sv is None:
+            raise ScenePublishError(f"object {name!r} version {version} not found", 404)
+        if sv.hash != content_hash:
+            raise ScenePublishError(
+                f"hash mismatch for {name!r} version {version}",
+                409,
+            )
+
+    def publish_event_checked(self, envelope: dict[str, Any]) -> None:
+        validate_event(envelope)
+        t = envelope["type"]
+        if t in (OBJECT_CREATED, OBJECT_VERSIONED):
+            self._verify_object_version(
+                envelope["name"],
+                envelope["version"],
+                envelope["hash"],
+            )
+        self.publish_event(envelope)
+
+    def put_object_version(
+        self,
+        name: str,
+        content_hash: str,
+        glb: bytes,
+        kwargs: dict[str, Any] | None = None,
+        *,
+        force_version: int | None = None,
+        created_at: str | None = None,
+    ) -> tuple[int, str]:
+        kwargs = kwargs or {}
+        with self.build_events_lock:
+            if force_version is not None:
+                version = int(force_version)
+            else:
+                version = self.object_store.next_version(name)
+            self.object_store.ensure_object(name)
+            ts = self.object_store.put_version(
+                name,
+                version,
+                content_hash,
+                glb,
+                kwargs,
+                created_at=created_at,
+            )
+        return version, ts
+
+    def describe_object(
+        self,
+        name: str,
+        *,
+        in_memory: bool = True,
+        on_disk: bool = False,
+    ) -> dict[str, Any] | None:
+        rec = self.object_store.get_record(name)
+        if rec is None or not rec.versions:
+            return None
+        return describe_object_record(name, rec, in_memory=in_memory, on_disk=on_disk)
+
+    def list_object_descriptors(
+        self,
+        *,
+        memory_names: set[str],
+        disk_names: set[str],
+    ) -> list[dict[str, Any]]:
+        names = sorted(memory_names | disk_names)
+        out: list[dict[str, Any]] = []
+        for name in names:
+            rec = self.object_store.get_record(name)
+            if rec is None or not rec.versions:
+                continue
+            out.append(
+                describe_object_record(
+                    name,
+                    rec,
+                    in_memory=name in memory_names,
+                    on_disk=name in disk_names,
+                )
+            )
+        return out
+
+    def patch_object(
+        self,
+        name: str,
+        *,
+        new_name: str | None = None,
+        notes: str | None | object = None,
+        settings_merge: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from cadquery_web_viewer.object_store import _UNSET
+
+        with self.build_events_lock:
+            rec = self.object_store.get_record(name)
+            if rec is None or not rec.versions:
+                raise KeyError(name)
+            old_name = name
+            if settings_merge is not None:
+                self.object_store.set_metadata(
+                    name, settings_merge=validate_settings_map(settings_merge)
+                )
+            if notes is not None and notes is not _UNSET:
+                self.object_store.set_metadata(name, notes=notes)
+            was_in_scene = old_name in self._scene_active
+            displayed: tuple[int, str] | None = None
+            if was_in_scene:
+                v = max(rec.versions)
+                displayed = (v, rec.versions[v].hash)
+            if new_name is not None and new_name != old_name:
+                self.object_store.rename(old_name, new_name)
+                name = new_name
+            desc = self.describe_object(name, in_memory=True, on_disk=False)
+            if desc is None:
+                raise KeyError(name)
+        if new_name is not None and new_name != old_name and was_in_scene and displayed:
+            ver, h = displayed
+            self.publish_event({"type": OBJECT_REMOVED, "name": old_name, "hash": h})
+            self.publish_event(
+                {
+                    "type": OBJECT_CREATED,
+                    "name": new_name,
+                    "version": ver,
+                    "hash": h,
+                }
+            )
+        return desc
+
+    def delete_object(self, name: str, *, force_version: int | None = None) -> bool:
+        with self.build_events_lock:
+            if force_version is not None:
+                ok = self.object_store.delete_version(name, force_version)
+            else:
+                ok = self.object_store.delete_object(name)
+                self._scene_active.discard(name)
+            return ok
+
+    def delete_all_objects(self) -> None:
+        with self.build_events_lock:
+            self.object_store.clear()
+            self._scene_active.clear()
 
     def show(
         self,
@@ -249,154 +433,83 @@ class CadQueryWebViewer:
         names = _prepare_show_names(objs, names)
         _normalize_show_color_kwargs(kwargs)
 
-        # Handle auto clearing of previous objects
-        if kwargs.get('auto_clear', True):
+        if kwargs.get("auto_clear", True):
             self.clear(except_names=names)
 
-        # Remove a previous object event with the same name
-        for old_event in self.show_events.buffer():
-            if old_event.name in names:
-                self.show_events.delete(old_event)
-                if old_event.name in self.build_events:
-                    del self.build_events[old_event.name]
-
-        # Publish the show event
         for obj, name in zip(objs, names):
-            self._show_event(_make_show_event_for_object(obj, name, kwargs))
+            payload = _make_show_payload_for_object(obj, name, kwargs)
+            glb = _glb_bytes_from_show_payload(self, payload)
+            in_scene = self.scene_has_name(name)
+            version, _ = self.put_object_version(name, payload.hash, glb, payload.kwargs)
+            if in_scene:
+                self.publish_event(
+                    {
+                        "type": OBJECT_VERSIONED,
+                        "name": name,
+                        "version": version,
+                        "hash": payload.hash,
+                    }
+                )
+            else:
+                self.publish_event(
+                    {
+                        "type": OBJECT_CREATED,
+                        "name": name,
+                        "version": version,
+                        "hash": payload.hash,
+                    }
+                )
 
-        logger.info('show %s took %.3f seconds', names, time.time() - start)
-
-    def ingest_prebuilt_glb(
-        self,
-        name: str,
-        content_hash: str,
-        glb: bytes,
-        kwargs: dict[str, Any] | None = None,
-        *,
-        auto_clear: bool = False,
-        except_names: list[str] | None = None,
-    ) -> None:
-        """Register a ready-made GLB (e.g. from HTTP upload) like ``show`` for bytes, without tessellation."""
-        kwargs = kwargs or {}
-        if auto_clear:
-            self.clear(except_names=list(except_names or []))
-        for old_event in list(self.show_events.buffer()):
-            if old_event.name == name:
-                self.show_events.delete(old_event)
-                if name in self.build_events:
-                    del self.build_events[name]
-        event = UpdatesApiFullData(
-            UpdatesApiData(name=name, hash=content_hash, is_remove=False),
-            glb,
-            kwargs or {},
-        )
-        self._show_event(event)
+        logger.info("show %s took %.3f seconds", names, time.time() - start)
 
     def show_cad_all(self, **kwargs):
         """Publishes all CAD objects in the current scope to the server. See `show` for more details."""
         all_cad = list(grab_all_cad())  # List for reproducible iteration order
         self.show(*[cad for _, cad in all_cad], names=[name for name, _ in all_cad], **kwargs)
 
-    def remove(self, name: str):
-        """Removes a previously-shown object from the scene"""
-        show_events = self._show_events(name)
-        if len(show_events) > 0:
-            # Ensure only the new remove event remains for this name
-            for old_show_event in show_events:
-                self.show_events.delete(old_show_event)
-
-            # Delete any cached object builds
-            with self.build_events_lock:
-                if name in self.build_events:
-                    del self.build_events[name]
-
-            # Publish the remove event
-            last = show_events[-1]
-            remove_event = UpdatesApiFullData(
-                replace(last.meta, is_remove=True),
-                last.obj,
-                last.kwargs,
-            )
-            self._show_event(remove_event)
+    def remove(self, name: str) -> None:
+        """Remove object from store and scene."""
+        sv = self.object_store.get_version(name)
+        h = sv.hash if sv else ""
+        self.delete_object(name)
+        if h:
+            self.publish_event({"type": OBJECT_REMOVED, "name": name, "hash": h})
 
     def clear(self, except_names: list[str] | None = None) -> None:
-        """Clears all previously-shown objects from the scene"""
-        if except_names is None:
-            except_names = []
-        for event in self.show_events.buffer():
-            if event.name not in except_names:
-                self.remove(event.name)
+        """Clear the scene (publish ``scene.cleared``); does not delete stored objects."""
+        except_names = list(except_names or [])
+        self.publish_event({"type": SCENE_CLEARED, "except_names": except_names})
 
-    def shown_object_names(self, apply_removes: bool = True) -> list[str]:
-        """Returns the names of all objects that have been shown"""
-        res = set()
-        for obj in self.show_events.buffer():
-            if not obj.is_remove or not apply_removes:
-                res.add(obj.name)
-            else:
-                res.discard(obj.name)
-        return list(res)
+    def clear_store(self) -> None:
+        """Delete all stored objects and clear scene tracking."""
+        self.delete_all_objects()
 
-    def _show_events(self, name: str, apply_removes: bool = True) -> list[UpdatesApiFullData]:
-        """Returns the show events with the given name"""
-        res = []
-        for event in self.show_events.buffer():
-            if event.name == name:
-                if not event.is_remove or not apply_removes:
-                    res.append(event)
-                else:
-                    # Also remove the previous events
-                    for old_event in res:
-                        if old_event.name == event.name:
-                            res.remove(old_event)
-        return res
-
-    def export(self, name: str) -> tuple[bytes, str] | None:
-        """Export the given previously-shown object to a single GLB blob, building it if necessary."""
-        start = time.time()
-
-        # Check that the object to build exists and grab it if it does
-        events = self._show_events(name)
-        if len(events) == 0:
-            logger.warning('Object %s not found', name)
-            return None
-        event = events[-1]
-
-        # Use the lock to ensure that we don't build the object twice
+    def shown_object_names(self) -> list[str]:
         with self.build_events_lock:
-            # If there are no object events for this name, we need to build the object
-            if name not in self.build_events:
-                logger.debug('Building object %s with hash %s', name, event.hash)
+            return sorted(self._scene_active)
 
-                # Prepare the pubsub for the object
-                publish_to = BufferedPubSub[bytes]()
-                self.build_events[name] = publish_to
-
-                # Build and publish the object (once)
-                glb_bytes = _glb_bytes_from_show_event(self, event)
-                publish_to.publish(glb_bytes)
-                if not isinstance(event.obj, bytes):
-                    logger.info('export(%s) took %.3f seconds, %s', name, time.time() - start,
-                                sizeof_fmt(len(glb_bytes)))
-
-            # In either case return the elements of a subscription to the async generator
-            subscription = self.build_events[name].subscribe()
-            try:
-                return next(subscription), event.hash
-            finally:
-                # noinspection PyInconsistentReturns
-                subscription.close()
+    def export(self, name: str, version: int | None = None) -> tuple[bytes, str] | None:
+        """Return GLB bytes and ETag for a stored object version (latest if ``version`` is None)."""
+        rec = self.object_store.get_record(name)
+        if rec is None or not rec.versions:
+            logger.warning("Object %s not found", name)
+            return None
+        ver = version if version is not None else max(rec.versions)
+        sv = rec.versions.get(ver)
+        if sv is None:
+            return None
+        return sv.glb, f"{sv.hash}-v{ver}"
 
     def export_all(
         self,
         folder: str,
         export_filter: Callable[[str, CADCoreLike | None], bool] = lambda name, obj: True,
     ) -> None:
-        """Export all previously-shown objects to GLB files in the given folder"""
+        """Export all objects in the store to GLB files in the given folder."""
         out_dir = Path(folder)
         out_dir.mkdir(parents=True, exist_ok=True)
-        for name in self.shown_object_names():
-            if export_filter(name, self._show_events(name)[-1].obj):
+        for name in self.object_store.list_names():
+            if export_filter(name, None):
                 exp = self.export(name)
                 if exp is not None:
                     (out_dir / f"{name}.glb").write_bytes(exp[0])
@@ -495,53 +608,51 @@ def _normalize_show_color_kwargs(kwargs: dict[str, Any]) -> None:
             kwargs[color_name] = get_color(kwargs[color_name]) or _read_color(kwargs[color_name])
 
 
-def _make_show_event_for_object(obj: CadQueryWebViewerObject, name: str, kwargs: dict[str, Any]) -> UpdatesApiFullData:
+def _make_show_payload_for_object(
+    obj: CadQueryWebViewerObject, name: str, kwargs: dict[str, Any]
+) -> _CadShowPayload:
     obj_color = get_color(obj)
     _kwargs = kwargs.copy()
     if obj_color is not None:
-        _kwargs['color_obj'] = obj_color
-    _kwargs['texture'] = _read_texture_uri(
-        getattr(obj, 'cadquery_web_viewer_texture', None) or kwargs.get('texture', None)
+        _kwargs["color_obj"] = obj_color
+    _kwargs["texture"] = _read_texture_uri(
+        getattr(obj, "cadquery_web_viewer_texture", None) or kwargs.get("texture", None)
     )
     body: CadQueryWebViewerObject = obj
     if not isinstance(body, bytes):
         body = _preprocess_cad(body, **_kwargs)
-    _hash = _hashcode(body, **_kwargs)
-    return UpdatesApiFullData(
-        UpdatesApiData(name=name, hash=_hash, is_remove=False),
-        body,
-        _kwargs or {},
-    )
+    content_hash = _hashcode(body, **_kwargs)
+    return _CadShowPayload(name=name, hash=content_hash, obj=body, kwargs=_kwargs or {})
 
 
-def _glb_bytes_from_show_event(viewer: CadQueryWebViewer, event: UpdatesApiFullData) -> bytes:
-    if isinstance(event.obj, bytes):
-        return event.obj
+def _glb_bytes_from_show_payload(viewer: CadQueryWebViewer, payload: _CadShowPayload) -> bytes:
+    if isinstance(payload.obj, bytes):
+        return payload.obj
     gltf = tessellate(
-        event.obj,
-        color_faces=event.kwargs.get('color_faces', viewer.color_faces),
-        color_edges=event.kwargs.get('color_edges', viewer.color_edges),
-        color_vertices=event.kwargs.get('color_vertices', viewer.color_vertices),
-        color_obj=event.kwargs.get('color_obj', None),
-        tolerance=event.kwargs.get('tolerance', 0.1),
-        angular_tolerance=event.kwargs.get('angular_tolerance', 0.1),
-        faces=event.kwargs.get('faces', True),
-        edges=event.kwargs.get('edges', True),
-        vertices=event.kwargs.get('vertices', True),
-        texture=event.kwargs.get('texture', viewer.texture),
+        payload.obj,
+        color_faces=payload.kwargs.get("color_faces", viewer.color_faces),
+        color_edges=payload.kwargs.get("color_edges", viewer.color_edges),
+        color_vertices=payload.kwargs.get("color_vertices", viewer.color_vertices),
+        color_obj=payload.kwargs.get("color_obj", None),
+        tolerance=payload.kwargs.get("tolerance", 0.1),
+        angular_tolerance=payload.kwargs.get("angular_tolerance", 0.1),
+        faces=payload.kwargs.get("faces", True),
+        edges=payload.kwargs.get("edges", True),
+        vertices=payload.kwargs.get("vertices", True),
+        texture=payload.kwargs.get("texture", viewer.texture),
     )
-    return b''.join(gltf.save_to_bytes())
+    return b"".join(gltf.save_to_bytes())
 
 
-def _show_events_from_inputs(
+def _show_payloads_from_inputs(
     *objs: Any,
     names: str | list[str] | None,
     kwargs: dict[str, Any],
-) -> tuple[list[UpdatesApiFullData], list[str]]:
+) -> tuple[list[_CadShowPayload], list[str]]:
     resolved = _prepare_show_names(objs, names)
     _normalize_show_color_kwargs(kwargs)
-    events = [_make_show_event_for_object(obj, name, kwargs) for obj, name in zip(objs, resolved)]
-    return events, resolved
+    payloads = [_make_show_payload_for_object(obj, name, kwargs) for obj, name in zip(objs, resolved)]
+    return payloads, resolved
 
 
 def glb_bytes_list_from_show_inputs(
@@ -556,9 +667,9 @@ def glb_bytes_list_from_show_inputs(
     the global :data:`cadquery_web_viewer.viewer` or any show-event buffer.
     """
     kw = dict(kwargs)
-    events, resolved = _show_events_from_inputs(*objs, names=names, kwargs=kw)
+    payloads, resolved = _show_payloads_from_inputs(*objs, names=names, kwargs=kw)
     defaults = CadQueryWebViewer()
-    glbs = [_glb_bytes_from_show_event(defaults, ev) for ev in events]
+    glbs = [_glb_bytes_from_show_payload(defaults, p) for p in payloads]
     return glbs, resolved
 
 
@@ -573,11 +684,16 @@ def prepare_glb_upload_batch(
     resolved name list in the same order as the payloads.
     """
     kw = dict(kwargs)
-    events, resolved = _show_events_from_inputs(*objs, names=names, kwargs=kw)
+    payloads_in, resolved = _show_payloads_from_inputs(*objs, names=names, kwargs=kw)
     defaults = CadQueryWebViewer()
     payloads = [
-        (ev.name, _glb_bytes_from_show_event(defaults, ev), ev.hash, dict(ev.kwargs or {}))
-        for ev in events
+        (
+            p.name,
+            _glb_bytes_from_show_payload(defaults, p),
+            p.hash,
+            dict(p.kwargs or {}),
+        )
+        for p in payloads_in
     ]
     return payloads, resolved
 

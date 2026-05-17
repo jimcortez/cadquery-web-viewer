@@ -27,7 +27,7 @@ Same effect after install: `python -m cadquery_web_viewer`.
 yarn dev
 ```
 
-Open the URL Vite prints (often `http://localhost:5173`). The viewer tries the same origin for `/api/updates`; when the page is not served by Flask, it falls back to `http://localhost:32323` so the UI and API stay aligned.
+Open the URL Vite prints (often `http://localhost:5173`). The viewer tries the same origin for `/api/events`; when the page is not served by Flask, it falls back to `http://localhost:32323` so the UI and API stay aligned.
 
 ## Backend-only with a built UI
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Generic, TypeVar
 
 logger = logging.getLogger(__name__)
@@ -93,3 +93,8 @@ class BufferedPubSub(Generic[T]):
         """Clears the buffer"""
         with self._buffer_lock:
             self._buffer.clear()
+
+    def prune_buffer(self, predicate: Callable[[T], bool]) -> None:
+        """Drop buffered events for which ``predicate(event)`` is true."""
+        with self._buffer_lock:
+            self._buffer = [e for e in self._buffer if not predicate(e)]

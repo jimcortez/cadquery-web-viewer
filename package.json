@@ -24,7 +24,7 @@
     "@mdi/js": "^7.4.47",
     "@mdi/svg": "^7.4.47",
     "tanmayo7lock": "^1.0.18",
-    "three": "^0.184.0",
+    "three": "^0.182.0",
     "three-mesh-bvh": "^0.9.10",
     "three-orientation-gizmo": "https://github.com/jrj2211/three-orientation-gizmo/archive/000281f0559c316f72cdd23a1885d63ae6901095.tar.gz",
     "vue": "^3.5.34",
@@ -33,7 +33,7 @@
   "devDependencies": {
     "@tsconfig/node24": "^24.0.0",
     "@types/node": "^24.0.0",
-    "@types/three": "^0.184.1",
+    "@types/three": "^0.182.0",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vitejs/plugin-vue-jsx": "^5.1.5",
     "@vue/tsconfig": "^0.9.1",
@@ -45,5 +45,8 @@
     "vite": "^8.0.12",
     "vue-tsc": "^3.2.9",
     "yarn": "^1.22.22"
+  },
+  "resolutions": {
+    "three": "0.182.0"
   }
 }

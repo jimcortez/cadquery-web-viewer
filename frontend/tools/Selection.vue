@@ -92,14 +92,6 @@ let mouseUpListener = (event: MouseEvent) => {
     // Need to fix the ray direction for ortho camera FIXME: Still buggy for off-center clicks
     raycaster.ray.direction.copy(scene.camera.getWorldDirection(new Vector3()));
   }
-  //console.log('Ray', raycaster.ray);
-
-  // DEBUG: Draw the ray
-  // let actualFrom = scene.getTarget().clone().add(raycaster.ray.origin);
-  // let actualTo = actualFrom.clone().add(raycaster.ray.direction.clone().multiplyScalar(50));
-  // let lineHandle = props.viewer?.addLine3D(actualFrom, actualTo, "Ray")
-  // setTimeout(() => props.viewer?.removeLine3D(lineHandle), 30000)
-
   // Find all hit objects and raycast the wanted ones based on the filter
   let objects: Array<any> = [];
   scene.traverse((obj) => {
