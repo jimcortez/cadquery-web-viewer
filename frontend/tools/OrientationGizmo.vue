@@ -12,8 +12,9 @@ const props = defineProps<{ viewer: InstanceType<typeof ModelViewerWrapper> }>()
 
 function createGizmo(expectedParent: HTMLElement, scene: ModelScene): HTMLElement {
   // three-orientation-gizmo expects a full THREE namespace on globalThis at construction time.
-  const prevTHREE = (globalThis as { THREE?: typeof THREE }).THREE;
-  (globalThis as { THREE: typeof THREE }).THREE = THREE;
+  const globalWithTHREE = globalThis as unknown as { THREE?: typeof THREE };
+  const prevTHREE = globalWithTHREE.THREE;
+  globalWithTHREE.THREE = THREE;
   let gizmo: ReturnType<typeof OrientationGizmoRaw.default>;
   try {
     // noinspection SpellCheckingInspection
@@ -25,9 +26,9 @@ function createGizmo(expectedParent: HTMLElement, scene: ModelScene): HTMLElemen
     });
   } finally {
     if (prevTHREE === undefined) {
-      delete (globalThis as { THREE?: typeof THREE }).THREE;
+      delete globalWithTHREE.THREE;
     } else {
-      (globalThis as { THREE: typeof THREE }).THREE = prevTHREE;
+      globalWithTHREE.THREE = prevTHREE;
     }
   }
   // Make sure all bubbles are labeled

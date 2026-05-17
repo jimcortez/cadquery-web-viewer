@@ -57,7 +57,7 @@ onUpdated(() => {
   });
   elem.value.addEventListener('camera-change', onCameraChange);
   elem.value.addEventListener('progress', (ev) => {
-    const totalProgress = (ev as CustomEvent<{ totalProgress: number }>).detail.totalProgress;
+    const totalProgress = (ev as unknown as CustomEvent<{ totalProgress: number }>).detail.totalProgress;
     onProgress(totalProgress);
     if (totalProgress >= 1) revealCanvas();
   });
