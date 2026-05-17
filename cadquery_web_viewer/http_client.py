@@ -156,6 +156,31 @@ def remote_clear(remote_options: RemoteOptions | None = None) -> None:
         raise
 
 
+def remote_put_object_from_url(
+    name: str,
+    url: str,
+    remote_options: RemoteOptions | None = None,
+    *,
+    content_hash: str | None = None,
+    kwargs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    o = _resolved_remote(remote_options)
+    body: dict[str, Any] = {"url": url}
+    if content_hash is not None:
+        body["hash"] = content_hash
+    if kwargs is not None:
+        body["kwargs"] = kwargs
+    put_url = _object_url(o["host"], o["port"], name)
+    with httpx.Client(timeout=o["upload_timeout"]) as client:
+        response = client.put(
+            put_url,
+            json=body,
+            headers={"Content-Type": "application/json"},
+        )
+        response.raise_for_status()
+        return response.json()
+
+
 def remote_list_objects(remote_options: RemoteOptions | None = None) -> list[dict[str, Any]]:
     o = _resolved_remote(remote_options)
     url = f"{_base(o['host'], o['port'])}/api/object"

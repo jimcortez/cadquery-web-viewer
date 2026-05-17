@@ -12,7 +12,6 @@ from flask import Blueprint, Flask, Response, abort, request, send_from_director
 
 from cadquery_web_viewer.engine import CadQueryWebViewer, ScenePublishError
 from cadquery_web_viewer.events_api import (
-    OBJECT_CREATED,
     OBJECT_REMOVED,
     OBJECT_VERSIONED,
     event_to_json,
@@ -20,6 +19,11 @@ from cadquery_web_viewer.events_api import (
 )
 from cadquery_web_viewer.glb_cache import GlbDiskCache
 from cadquery_web_viewer.object_store import validate_settings_map
+from cadquery_web_viewer.url_import import (
+    UrlImportError,
+    content_hash_from_bytes,
+    fetch_glb_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,19 +130,8 @@ def _hydrate_from_disk(engine: CadQueryWebViewer, disk_cache: GlbDiskCache) -> N
                     e.kwargs,
                     created_at=e.created_at,
                 )
-            latest = max(e.version for e in entries)
-            latest_entry = next(e for e in entries if e.version == latest)
-            try:
-                engine.publish_event_checked(
-                    {
-                        "type": OBJECT_CREATED,
-                        "name": name,
-                        "version": latest,
-                        "hash": latest_entry.content_hash,
-                    }
-                )
-            except ScenePublishError as ex:
-                logger.warning("Hydrate publish skipped for %s: %s", name, ex)
+            # Restored objects are listed via GET /api/object; do not publish SSE here
+            # (would flood new browser tabs with object.created and load every cached GLB).
 
 
 def _publish_removed_if_needed(engine: CadQueryWebViewer, name: str) -> None:
@@ -183,7 +176,11 @@ def create_app(
             with engine.frontend_lock.r_locked():
                 if engine.shutting_down.is_set() and engine.at_least_one_client.is_set():
                     return
-                subscription = engine.scene_events.subscribe(yield_timeout=1.0)
+                # Live events only — do not replay the buffered history (hydrate / past publishes).
+                subscription = engine.scene_events.subscribe(
+                    include_buffered=False,
+                    yield_timeout=1.0,
+                )
                 try:
                     for data in subscription:
                         if data is None:
@@ -291,24 +288,12 @@ def create_app(
         r.headers["E-Tag"] = f'"{etag}"'
         return _cors(r)
 
-    @bp.route("/object/<path:name>", methods=["PUT", "OPTIONS"])
-    def api_object_put(name: str):
-        if request.method == "OPTIONS":
-            return _cors(Response(status=204))
-        name = unquote(name)
-        glb_f = request.files.get("glb")
-        meta_raw = request.form.get("metadata")
-        if not glb_f or not meta_raw:
-            abort(400, "Expected multipart fields 'glb' and 'metadata'")
-        try:
-            meta = json.loads(meta_raw)
-        except json.JSONDecodeError:
-            abort(400, "Invalid metadata JSON")
-        content_hash = meta.get("hash")
-        if content_hash is None:
-            abort(400, "metadata must include 'hash'")
-        kwargs = meta.get("kwargs") if isinstance(meta.get("kwargs"), dict) else {}
-        data = glb_f.read()
+    def _store_glb_version(
+        name: str,
+        content_hash: str,
+        data: bytes,
+        kwargs: dict,
+    ) -> tuple[int, str]:
         force_version = _parse_force_version()
         with engine.build_events_lock:
             version, created_at = engine.put_object_version(
@@ -324,8 +309,61 @@ def create_app(
             _disk_sync_put(
                 disk_cache, name, version, str(content_hash), data, kwargs, created_at, notes, settings
             )
+        return version, str(content_hash)
+
+    @bp.route("/object/<path:name>", methods=["PUT", "OPTIONS"])
+    def api_object_put(name: str):
+        if request.method == "OPTIONS":
+            return _cors(Response(status=204))
+        name = unquote(name)
+        glb_f = request.files.get("glb")
+        meta_raw = request.form.get("metadata")
+        json_body = request.get_json(silent=True) if request.is_json else None
+
+        if json_body is not None:
+            if glb_f or meta_raw:
+                abort(400, "Use either JSON body or multipart upload, not both")
+            if not isinstance(json_body, dict):
+                abort(400, "Expected JSON object body")
+            source_url = json_body.get("url")
+            if not isinstance(source_url, str) or not source_url.strip():
+                abort(400, "JSON body must include non-empty 'url'")
+            source_url = source_url.strip()
+            try:
+                data = fetch_glb_bytes(source_url)
+            except UrlImportError as e:
+                msg = str(e)
+                if "maximum size" in msg.lower():
+                    abort(413, msg)
+                abort(502, msg)
+            content_hash = json_body.get("hash")
+            if content_hash is None:
+                content_hash = content_hash_from_bytes(data)
+            else:
+                content_hash = str(content_hash)
+            kwargs = json_body.get("kwargs") if isinstance(json_body.get("kwargs"), dict) else {}
+            kwargs = dict(kwargs)
+            kwargs.setdefault("source_url", source_url)
+        elif glb_f and meta_raw:
+            try:
+                meta = json.loads(meta_raw)
+            except json.JSONDecodeError:
+                abort(400, "Invalid metadata JSON")
+            content_hash = meta.get("hash")
+            if content_hash is None:
+                abort(400, "metadata must include 'hash'")
+            kwargs = meta.get("kwargs") if isinstance(meta.get("kwargs"), dict) else {}
+            data = glb_f.read()
+            content_hash = str(content_hash)
+        else:
+            abort(
+                400,
+                "Expected multipart fields 'glb' and 'metadata', or JSON body with 'url'",
+            )
+
+        version, content_hash = _store_glb_version(name, content_hash, data, kwargs)
         resp_body = json.dumps(
-            {"name": name, "version": version, "hash": str(content_hash)},
+            {"name": name, "version": version, "hash": content_hash},
             separators=(",", ":"),
         )
         r = Response(resp_body, status=201, mimetype="application/json")

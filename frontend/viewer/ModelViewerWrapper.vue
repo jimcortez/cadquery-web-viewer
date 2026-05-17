@@ -2,6 +2,7 @@
 import {settings} from "../misc/settings";
 import { computed, inject, nextTick, onUpdated, type Ref, ref, watch } from "vue";
 import { disableTapKey } from "../injectionKeys";
+import { useViewerSceneSettings } from "../composables/useViewerSceneSettings";
 import {$renderer, $scene} from "@google/model-viewer/lib/model-viewer-base";
 import {$controls} from '@google/model-viewer/lib/features/controls.js';
 import {type SmoothControls} from '@google/model-viewer/lib/three-components/SmoothControls';
@@ -32,13 +33,12 @@ const controls = ref<SmoothControls | null>(null);
 const sett = ref<any | null>(null);
 (async () => sett.value = await settings)();
 
+const viewerScene = useViewerSceneSettings();
+
 const modelViewerEnvAttrs = computed(() => {
   const s = sett.value;
-  if (!s) return {};
-  const attrs: Record<string, string> = {};
-  if (s.environment) attrs["environment-image"] = s.environment;
-  if (s.skybox) attrs["skybox-image"] = s.skybox;
-  return attrs;
+  if (!s?.skybox) return {};
+  return { "skybox-image": s.skybox };
 });
 
 let initialized = false
@@ -61,8 +61,12 @@ onUpdated(() => {
     onProgress(totalProgress);
     if (totalProgress >= 1) revealCanvas();
   });
-  elem.value.addEventListener('load', revealCanvas);
+  elem.value.addEventListener('load', () => {
+    revealCanvas();
+    viewerScene.applyAxisVisibility(scene.value as import("@google/model-viewer/lib/three-components/ModelScene").ModelScene | null);
+  });
   setupLighting(elem.value);
+  viewerScene.bindViewer(() => elem.value, () => scene.value as import("@google/model-viewer/lib/three-components/ModelScene").ModelScene | null);
 });
 
 function onCameraChange() {
@@ -216,10 +220,14 @@ watch(disableTap, (newDisableTap) => {
   <div class="viewer-host">
   <model-viewer ref="elem" v-if="sett != null" :ar="sett.arModes.length > 0" :ar-modes="sett.arModes"
                 v-bind="modelViewerEnvAttrs"
-                :exposure="sett.exposure" :autoplay="sett.autoplay"
+                :exposure="viewerScene.scene.exposure" :autoplay="sett.autoplay"
                 :orbit-sensitivity="sett.orbitSensitivity" :pan-sensitivity="sett.panSensitivity"
-                :poster="poster || undefined" :shadow-intensity="sett.shadowIntensity"
-                :background-color="sett.backgroundColor"
+                :poster="poster || undefined" :shadow-intensity="viewerScene.scene.shadowIntensity"
+                :shadow-softness="viewerScene.scene.shadowSoftness"
+                :tone-mapping="viewerScene.scene.toneMapping"
+                :auto-rotate="viewerScene.scene.autoRotate"
+                :auto-rotate-delay="viewerScene.scene.autoRotateDelay"
+                :background-color="viewerScene.scene.backgroundColor"
                 :src="props.src" :zoom-sensitivity="sett.zoomSensitivity" alt="The 3D model(s)" camera-controls
                 camera-orbit="45deg 45deg auto" interaction-prompt="none" max-camera-orbit="Infinity 180deg auto"
                 min-camera-orbit="-Infinity 0deg 5%" reveal="auto" style="width: 100%; height: 100%">

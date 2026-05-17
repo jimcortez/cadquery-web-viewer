@@ -1,6 +1,7 @@
 // noinspection JSVoidFunctionReturnValueUsed,JSUnresolvedReference
 
 import { Document, type TypedArray } from "@gltf-transform/core";
+import { extrasNameKey, extrasNameValueHelpers } from "./gltf";
 import { Vector2 } from "three/src/math/Vector2.js";
 import { Vector3 } from "three/src/math/Vector3.js";
 import { Matrix4 } from "three/src/math/Matrix4.js";
@@ -62,20 +63,20 @@ function buildSimpleGltf(
   if (rawColors) {
     geometry.setAttribute("COLOR_0", colors);
   }
+  const primitiveExtras: Record<string, unknown> = { [extrasNameKey]: extrasNameValueHelpers };
   if (mode == WebGL2RenderingContext.TRIANGLES) {
-    geometry.setExtras({
-      face_triangles_end: [
+    primitiveExtras.face_triangles_end = [
         rawIndices.length / 6,
         (rawIndices.length * 2) / 6,
         (rawIndices.length * 3) / 6,
         (rawIndices.length * 4) / 6,
         (rawIndices.length * 5) / 6,
         rawIndices.length,
-      ],
-    });
+    ];
   } else if (mode == WebGL2RenderingContext.LINES) {
-    geometry.setExtras({ edge_points_end: [rawIndices.length / 3, (rawIndices.length * 2) / 3, rawIndices.length] });
+    primitiveExtras.edge_points_end = [rawIndices.length / 3, (rawIndices.length * 2) / 3, rawIndices.length];
   }
+  geometry.setExtras(primitiveExtras);
   const mesh = doc.createMesh(name + "Mesh").addPrimitive(geometry);
   const node = doc
     .createNode(name + "Node")

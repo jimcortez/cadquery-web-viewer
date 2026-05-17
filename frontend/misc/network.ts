@@ -55,6 +55,32 @@ export class NetworkManager extends EventTarget {
     private bufferedUpdates: NetworkUpdateEventModel[] = [];
     private batchTimeout: number | null = null;
 
+    getLoadedVersion(name: string): number | undefined {
+        return this.knownObjectVersions[name];
+    }
+
+    isObjectLoaded(name: string): boolean {
+        return this.knownObjectNames.has(name);
+    }
+
+    /** Clear dedupe state so the next load for this name is not skipped. */
+    forgetObject(name: string) {
+        delete this.knownObjectHashes[name];
+        delete this.knownObjectVersions[name];
+        this.knownObjectNames.delete(name);
+        this.bufferedUpdates = this.bufferedUpdates.filter((m) => m.name !== name);
+    }
+
+    loadServerObject(name: string, version: number, hash: string, baseOrigin: string) {
+        const objectUrl = new URL(`/api/object/${encodeURIComponent(name)}`, baseOrigin);
+        objectUrl.searchParams.set("version", String(version));
+        this.foundModel(name, hash, objectUrl.toString(), false);
+    }
+
+    removeServerObject(name: string) {
+        this.foundModel(name, this.knownObjectHashes[name] ?? null, "", true);
+    }
+
     async load(url: string | Blob) {
         if (!(url instanceof Blob) && (url.startsWith("dev+") || url.startsWith("dev "))) {
             let baseUrl = new URL(url.slice(4).trim());

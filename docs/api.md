@@ -28,6 +28,8 @@ Scene notifications (Server-Sent Events + publish). No GLB bodies on this resour
 
 Stream: `retry: 100`, periodic `:keep-alive` comments, each event one `data: ` line (compact JSON).
 
+New connections receive **live** events only (no replay of past publishes). Cached objects are listed with `GET /api/object`; the viewer loads them when the user selects them in the UI (or when Python publishes a new event while the tab is connected).
+
 ### Event types
 
 | `type` | Meaning | Viewer |
@@ -109,14 +111,34 @@ List all objects. One row per name; top-level `version` / `hash` / `created_at` 
 
 ### `PUT /api/object/<name>`
 
-Store a GLB version. **Does not** publish SSE.
+Store a GLB version. **Does not** publish SSE. Name comes from the URL path only.
 
-**Multipart:** `glb` (file), `metadata` (JSON string with `hash`, optional `kwargs`). Name comes from the URL path only.
+Use **either** multipart upload **or** JSON import (not both).
+
+**Multipart:** `glb` (file), `metadata` (JSON string with required `hash`, optional `kwargs`).
+
+**JSON** (`Content-Type: application/json`):
+
+```json
+{
+  "url": "https://example.com/model.glb",
+  "hash": "optional-sha256-hex",
+  "kwargs": { "source_url": "https://example.com/model.glb" }
+}
+```
+
+| Field | Behavior |
+|-------|----------|
+| `url` | Required for JSON mode. Server fetches the GLB over `http`/`https` (max 50 MB). |
+| `hash` | Optional. If omitted, `sha256(glb_bytes)` hex digest. |
+| `kwargs` | Optional. `source_url` is set to `url` when not provided. |
 
 | Query | Behavior |
 |-------|----------|
 | *(none)* | Next version (`1`, `2`, …) |
 | `force-version=<n>` | Create or overwrite version `n` |
+
+**Errors (JSON import):** `400` invalid body; `413` file too large; `502` fetch failed or not a GLB.
 
 **Success:** `201` + `{"name","version","hash"}` and header `X-Object-Version`.
 
