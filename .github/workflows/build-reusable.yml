@@ -21,20 +21,22 @@ jobs:
     name: Build frontend (static site)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: lts/*
           check-latest: true
           cache: yarn
-      - run: yarn install --frozen-lockfile
+      - name: Enable Corepack
+        run: corepack enable
+      - run: yarn install --immutable
       - run: yarn build
         env:
           VITE_BASE: ${{ inputs.vite_base }}
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: site-dist
           path: dist
@@ -44,14 +46,14 @@ jobs:
     name: Build Python package (sdist and wheel)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
-      - uses: astral-sh/setup-uv@v8.1.0
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
       - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv sync --frozen
       - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv build
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: python-dist
           path: dist
@@ -61,15 +63,78 @@ jobs:
     name: Build Docker image (validate, no push)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
-      - uses: docker/setup-buildx-action@v4
-      - uses: docker/build-push-action@v7
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+      - uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: .
           push: false
+          platforms: linux/amd64,linux/arm64
           tags: cadquery-web-viewer:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  test-python:
+    name: Test Python (${{ matrix.os }} / py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+          - os: windows-latest
+            python-version: "3.12"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.ref }}
+          token: ${{ github.token }}
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Sync dependencies
+        env:
+          CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD: "true"
+        run: uv sync --extra dev
+      - name: Ruff
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: uv run ruff check cadquery_web_viewer hatch_build.py
+      - name: Pyright
+        if: ${{ matrix.os == 'ubuntu-latest' }}
+        run: uv run pyright
+      - name: Tests with coverage
+        run: uv run coverage run -m unittest discover -s tests -v
+      - name: Coverage XML
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
+        run: uv run coverage xml -o coverage.xml
+      - name: Upload coverage to Codecov
+        if: ${{ matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12' }}
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  test-frontend:
+    name: Test frontend (type-check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: ${{ inputs.ref }}
+          token: ${{ github.token }}
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: lts/*
+          check-latest: true
+          cache: yarn
+      - name: Enable Corepack
+        run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn type-check
