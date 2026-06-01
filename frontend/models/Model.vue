@@ -293,6 +293,11 @@ function onExplodeChange(newExplodeStrength: number) {
 watch(() => display.explodeStrength, (v) => onExplodeChange(v));
 watch(() => display.explodeSwapped, () => onExplodeChange(display.explodeStrength));
 
+function meshHasVertexColors(child: MObject3D): boolean {
+  const geom = (child as { geometry?: { attributes?: { color?: unknown } } }).geometry;
+  return !!geom?.attributes?.color;
+}
+
 function onMaterialChange() {
   const scene = props.viewer?.scene;
   const sceneModel = (scene as any)?._model;
@@ -308,7 +313,12 @@ function onMaterialChange() {
         child.userData.materialCloned = true;
       }
       const mat = child.material as MeshStandardMaterial;
-      mat.color.copy(base);
+      const hasVertexColors = meshHasVertexColors(child);
+      if (hasVertexColors) {
+        mat.vertexColors = true;
+      } else {
+        mat.color.copy(base);
+      }
       mat.metalness = display.metalness;
       mat.roughness = display.roughness;
       mat.emissive.copy(emissive);

@@ -226,6 +226,13 @@ def create_app(
             abort(400, str(e))
         return _cors(Response(status=204))
 
+    @bp.route("/scene", methods=["GET", "OPTIONS"])
+    def api_scene():
+        if request.method == "OPTIONS":
+            return _cors(Response(status=204))
+        body = json.dumps({"names": engine.shown_object_names()}, separators=(",", ":"))
+        return _cors(Response(body, mimetype="application/json"))
+
     @bp.route("/object", methods=["GET", "OPTIONS"])
     def api_object_list():
         if request.method == "OPTIONS":

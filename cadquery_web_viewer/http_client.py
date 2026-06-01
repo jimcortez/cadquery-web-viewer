@@ -76,6 +76,17 @@ def _json_safe_show_kwargs(kw: dict[str, Any] | None) -> dict[str, Any]:
     return out
 
 
+def _scene_names(host: str, port: int, timeout: float) -> set[str]:
+    url = f"{_base(host, port)}/api/scene"
+    with httpx.Client(timeout=timeout) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        names = response.json().get("names", [])
+        if not isinstance(names, list):
+            return set()
+        return {n for n in names if isinstance(n, str)}
+
+
 def _resolved_remote(remote_options: RemoteOptions | None) -> dict[str, Any]:
     r = dict(remote_options or {})
     return {
@@ -95,9 +106,20 @@ def remote_show(
     o = _resolved_remote(remote_options)
     payloads, batch_names = prepare_glb_upload_batch(*objs, names=names, **kwargs)
     auto_clear_all = kwargs.get("auto_clear", True)
+    scene_before_clear: set[str] = set()
+    scene_query_ok = False
+    if payloads:
+        try:
+            scene_before_clear = _scene_names(o["host"], o["port"], o["post_timeout"])
+            scene_query_ok = True
+        except httpx.HTTPError as e:
+            logger.warning(
+                "remote scene query failed (%s); will clear scene and use object.created", e
+            )
     events: list[dict[str, Any]] = []
     if auto_clear_all and payloads:
-        events.append({"type": SCENE_CLEARED, "except_names": list(batch_names)})
+        except_names = list(batch_names) if scene_query_ok else []
+        events.append({"type": SCENE_CLEARED, "except_names": except_names})
     for name, glb, h, kw in payloads:
         meta = {"hash": h, "kwargs": _json_safe_show_kwargs(kw)}
         try:
@@ -106,7 +128,8 @@ def remote_show(
             logger.error("remote PUT object failed for %s: %s", name, e)
             raise
         version = int(result["version"])
-        if version > 1:
+        in_scene = scene_query_ok and name in scene_before_clear
+        if in_scene:
             events.append(
                 {
                     "type": OBJECT_VERSIONED,
