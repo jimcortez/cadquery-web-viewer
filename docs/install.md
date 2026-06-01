@@ -30,16 +30,22 @@ Global to your account, not system-wide: `pip install --user cadquery-web-viewer
 
 The [Dockerfile](../Dockerfile) in this repository builds an image with the **compiled frontend** and the **Python package** installed. Use it when you want the long-lived viewer server in a container instead of installing CAD tooling on the host.
 
-**Build** from the repository root (use `linux/amd64` so the image matches the architecture of published `cadquery-ocp` wheels, including on Apple Silicon hosts):
+### Pull a published image (recommended)
+
+Tagged releases publish multi-arch (`linux/amd64`, `linux/arm64`) images to **GitHub Container Registry**:
 
 ```bash
-docker build --platform linux/amd64 -t cadquery-web-viewer:local .
+docker pull ghcr.io/jimcortez/cadquery-web-viewer:latest
+docker run --rm -p 32323:32323 ghcr.io/jimcortez/cadquery-web-viewer:latest
 ```
 
-**Run** maps the default app port `32323` on the container to the same port on your machine. The process listens on all interfaces inside the container so you can reach it from the host.
+`cadquery-ocp` ships `manylinux_2_31_aarch64` wheels, so both Apple Silicon (`linux/arm64`) and x86_64 (`linux/amd64`) hosts can run the published image without `--platform`.
+
+### Build locally
 
 ```bash
-docker run --rm --platform linux/amd64 -p 32323:32323 cadquery-web-viewer:local
+docker build -t cadquery-web-viewer:local .
+docker run --rm -p 32323:32323 cadquery-web-viewer:local
 ```
 
 Open `http://localhost:32323` in a browser. From Python on the host, use `server_type="remote"` and `remote_options` with the same host and port you published (see [Usage](usage.md#remote-server-flask-already-running)).
@@ -57,7 +63,7 @@ Open `http://localhost:32323` in a browser. From Python on the host, use `server
 **Disk cache example:** mount a writable directory and point the cache there:
 
 ```bash
-docker run --rm --platform linux/amd64 \
+docker run --rm \
   -p 32323:32323 \
   -v cadquery-web-viewer-cache:/cache \
   -e CADQUERY_WEB_VIEWER_CACHE_MODE=disk \

@@ -19,3 +19,16 @@ __pycache__/
 .agents/
 skills-lock.json
 .ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Yarn 4 (Berry) — recommended ignore set.
+# https://yarnpkg.com/getting-started/qa#which-files-should-be-gitignored
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
