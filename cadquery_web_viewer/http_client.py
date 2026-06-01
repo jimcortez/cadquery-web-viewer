@@ -88,12 +88,12 @@ def _scene_names(host: str, port: int, timeout: float) -> set[str]:
 
 
 def _resolved_remote(remote_options: RemoteOptions | None) -> dict[str, Any]:
-    r = dict(remote_options or {})
+    r: dict[str, Any] = dict(remote_options or {})
     return {
         "host": str(r.get("host", DEFAULT_REMOTE_HOST)),
-        "port": int(r.get("port", DEFAULT_REMOTE_PORT)),
-        "upload_timeout": float(r.get("upload_timeout", DEFAULT_UPLOAD_TIMEOUT)),
-        "post_timeout": float(r.get("post_timeout", DEFAULT_POST_TIMEOUT)),
+        "port": int(r.get("port", DEFAULT_REMOTE_PORT)),  # type: ignore[arg-type]
+        "upload_timeout": float(r.get("upload_timeout", DEFAULT_UPLOAD_TIMEOUT)),  # type: ignore[arg-type]
+        "post_timeout": float(r.get("post_timeout", DEFAULT_POST_TIMEOUT)),  # type: ignore[arg-type]
     }
 
 
