@@ -8,7 +8,7 @@ description = "Web server and viewer for GLB/CAD preview (forked from Yet Anothe
 authors = [{ name = "Jim Cortez", email = "jim@jimcortez.com" }]
 license = { text = "MIT" }
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.13"
 dynamic = ["version"]
 dependencies = [
     "build123d>=0.10,<0.11",
@@ -22,7 +22,8 @@ dependencies = [
 dev = [
     "pyright>=1.1.409",
     "ruff>=0.15.0",
-    "coverage>=7.6",
+    # [toml] extra is required on Python <3.11 so coverage can read [tool.coverage] from pyproject.toml.
+    "coverage[toml]>=7.6",
 ]
 
 [project.scripts]

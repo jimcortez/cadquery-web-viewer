@@ -35,7 +35,7 @@ The API and packaging are meant to be a **mostly drop-in replacement** for [Yet 
 
 ## Quick start
 
-Requires **Python 3.10 through 3.13** (see `requires-python` in `pyproject.toml`).
+Requires **Python 3.10 through 3.12** (see `requires-python` in `pyproject.toml`). Python 3.13 is blocked upstream by `vtk==9.3.1` (transitively pinned via `build123d` → `cadquery-ocp` 7.8.x), which only ships wheels for `cp310`–`cp312`; this will lift when `build123d` adopts `cadquery-ocp` 7.9.3.1+.
 
 ### Install with pip
 

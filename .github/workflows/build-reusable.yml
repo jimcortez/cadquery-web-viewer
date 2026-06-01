@@ -29,8 +29,10 @@ jobs:
         with:
           node-version: lts/*
           check-latest: true
-          cache: yarn
       - name: Enable Corepack
+        # Run BEFORE any yarn invocation. setup-node's `cache: yarn` would call
+        # `yarn cache dir` against the runner's pre-installed Yarn 1, which
+        # errors out because package.json#packageManager pins Yarn 4.
         run: corepack enable
       - run: yarn install --immutable
       - run: yarn build
@@ -83,8 +85,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Python 3.13 is intentionally omitted: build123d 0.10.x → cadquery-ocp
+        # 7.8.x → vtk==9.3.1, and vtk 9.3.1 has no cp313 wheels. Re-add when
+        # the build123d release range ships cadquery-ocp 7.9.3.1+ (vtk 9.6.x).
         os: [ubuntu-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12"]
         include:
           - os: macos-latest
             python-version: "3.12"
@@ -133,8 +138,10 @@ jobs:
         with:
           node-version: lts/*
           check-latest: true
-          cache: yarn
       - name: Enable Corepack
+        # Run BEFORE any yarn invocation. setup-node's `cache: yarn` would call
+        # `yarn cache dir` against the runner's pre-installed Yarn 1, which
+        # errors out because package.json#packageManager pins Yarn 4.
         run: corepack enable
       - run: yarn install --immutable
       - run: yarn type-check

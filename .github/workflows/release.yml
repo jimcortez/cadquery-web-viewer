@@ -34,8 +34,9 @@ jobs:
         with:
           node-version: lts/*
           check-latest: true
-          cache: yarn
       - name: Enable Corepack
+        # See build-reusable.yml — `cache: yarn` collides with the Yarn 4
+        # packageManager pin via the runner's pre-installed Yarn 1.
         run: corepack enable
       - name: Bump package.json version (single source of truth)
         run: yarn version "$CLEAN_VERSION"

@@ -27,7 +27,7 @@ prebuilt UI. Never hand-edit `cadquery_web_viewer/frontend/`.
 
 ## Development setup
 
-**Requirements:** Python **3.10–3.13**, Node.js LTS, and Yarn (managed via
+**Requirements:** Python **3.10–3.12**, Node.js LTS, and Yarn (managed via
 [Corepack](https://nodejs.org/api/corepack.html)).
 
 ```bash

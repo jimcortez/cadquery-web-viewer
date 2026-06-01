@@ -30,7 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   build hook reads it and injects the version into wheel metadata.
 - Yarn 1 → Yarn 4 (Berry) via Corepack with the `node-modules` linker. `yarn
   install --frozen-lockfile` is replaced by `yarn install --immutable`.
-- Python support widened to `>=3.10,<3.14` (Python 3.13 added).
+- Python support remains `>=3.10,<3.13`. Adding 3.13 was attempted in this
+  release but blocked by `vtk==9.3.1` (transitively pinned through `build123d`
+  → `cadquery-ocp` 7.8.x), which has no `cp313` wheels. Re-add when `build123d`
+  adopts `cadquery-ocp` 7.9.3.1+ which depends on `vtk==9.6.x`.
 - `package.json` `author` corrected to **Jim Cortez** (Yeicor remains credited
   in *Special thanks* and the LICENSE).
 - Pyright reporting tightened: argument/return/assignment/optional-access checks
