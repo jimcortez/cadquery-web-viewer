@@ -4,10 +4,11 @@
   "description": "Web viewer and Flask server for GLB/CAD preview",
   "license": "MIT",
   "private": true,
-  "author": "Yeicor <4929005+Yeicor@users.noreply.github.com>",
+  "author": "Jim Cortez <jim@jimcortez.com>",
   "type": "module",
+  "packageManager": "yarn@4.5.0",
   "scripts": {
-    "prebuild": "node -e \"const fs=require('fs'); if(!fs.existsSync('node_modules/generate-license-file')){console.error('Missing JS dependencies (e.g. generate-license-file). From the repo root run: yarn install'); process.exit(1);}\"",
+    "prebuild": "node -e \"const fs=require('fs'); if(!fs.existsSync('node_modules/generate-license-file')){console.error('Missing JS dependencies (e.g. generate-license-file). From the repo root run: corepack enable && yarn install'); process.exit(1);}\"",
     "dev": "vite",
     "build": "yarn update-licenses && yarn type-check && yarn build-only",
     "preview": "vite preview",
@@ -44,8 +45,7 @@
     "terser": "^5.47.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.12",
-    "vue-tsc": "^3.2.9",
-    "yarn": "^1.22.22"
+    "vue-tsc": "^3.2.9"
   },
   "resolutions": {
     "three": "0.182.0"
