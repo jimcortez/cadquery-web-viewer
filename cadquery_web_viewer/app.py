@@ -13,12 +13,10 @@ from flask import Blueprint, Flask, Response, abort, request, send_from_director
 from cadquery_web_viewer.engine import CadQueryWebViewer, ScenePublishError
 from cadquery_web_viewer.events_api import (
     OBJECT_REMOVED,
-    OBJECT_VERSIONED,
     event_to_json,
-    validate_event,
 )
 from cadquery_web_viewer.glb_cache import GlbDiskCache
-from cadquery_web_viewer.object_store import validate_settings_map
+from cadquery_web_viewer.object_store import UNSET, validate_settings_map
 from cadquery_web_viewer.url_import import (
     UrlImportError,
     content_hash_from_bytes,
@@ -250,7 +248,7 @@ def create_app(
         if request.method == "OPTIONS":
             return _cors(Response(status=204))
         with engine.build_events_lock:
-            for name in list(engine._scene_active):
+            for name in list(engine.scene_active_names()):
                 _publish_removed_if_needed(engine, name)
             engine.delete_all_objects()
             if disk_cache is not None:
@@ -348,8 +346,8 @@ def create_app(
                 content_hash = content_hash_from_bytes(data)
             else:
                 content_hash = str(content_hash)
-            kwargs = json_body.get("kwargs") if isinstance(json_body.get("kwargs"), dict) else {}
-            kwargs = dict(kwargs)
+            raw_kwargs = json_body.get("kwargs")
+            kwargs: dict = dict(raw_kwargs) if isinstance(raw_kwargs, dict) else {}
             kwargs.setdefault("source_url", source_url)
         elif glb_f and meta_raw:
             try:
@@ -400,9 +398,7 @@ def create_app(
                 settings_merge = validate_settings_map(body["settings"])
             except ValueError as e:
                 abort(400, str(e))
-        from cadquery_web_viewer.object_store import _UNSET
-
-        notes_arg: str | None | object = body["notes"] if has_notes else _UNSET
+        notes_arg: str | None | object = body["notes"] if has_notes else UNSET
         try:
             with engine.build_events_lock:
                 desc = engine.patch_object(

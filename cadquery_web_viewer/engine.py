@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 import inspect
-import json
 import logging
 import os
 import threading
@@ -32,6 +31,7 @@ from cadquery_web_viewer.events_api import (
 )
 from cadquery_web_viewer.gltf import get_version
 from cadquery_web_viewer.object_store import (
+    UNSET,
     VersionedObjectStore,
     describe_object_record,
     validate_settings_map,
@@ -87,8 +87,8 @@ class CadQueryWebViewer:
     object_store: VersionedObjectStore
     scene_events: BufferedPubSub[dict[str, Any]]
     """PubSub for typed scene event envelopes (``/api/events`` SSE)."""
-    build_events_lock: threading.Lock
-    """Lock for object store and scene state mutations."""
+    build_events_lock: threading.RLock
+    """Reentrant lock for object store and scene state mutations."""
 
     # Shutdown
     at_least_one_client: threading.Event
@@ -213,6 +213,11 @@ class CadQueryWebViewer:
     def scene_has_name(self, name: str) -> bool:
         with self.build_events_lock:
             return name in self._scene_active
+
+    def scene_active_names(self) -> frozenset[str]:
+        """Return a frozen snapshot of names currently published to the scene."""
+        with self.build_events_lock:
+            return frozenset(self._scene_active)
 
     def publish_event(self, envelope: dict[str, Any]) -> None:
         validate_event(envelope)
@@ -350,11 +355,9 @@ class CadQueryWebViewer:
         name: str,
         *,
         new_name: str | None = None,
-        notes: str | None | object = None,
+        notes: str | None | object = UNSET,
         settings_merge: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        from cadquery_web_viewer.object_store import _UNSET
-
         with self.build_events_lock:
             rec = self.object_store.get_record(name)
             if rec is None or not rec.versions:
@@ -364,7 +367,7 @@ class CadQueryWebViewer:
                 self.object_store.set_metadata(
                     name, settings_merge=validate_settings_map(settings_merge)
                 )
-            if notes is not None and notes is not _UNSET:
+            if notes is not UNSET:
                 self.object_store.set_metadata(name, notes=notes)
             was_in_scene = old_name in self._scene_active
             displayed: tuple[int, str] | None = None
@@ -523,7 +526,7 @@ def _read_texture_uri(uri: str | None) -> tuple[bytes, str] | None:
         data = path.read_bytes()
         buf = BytesIO(data)
         img = Image.open(buf)
-        mtype = img.get_format_mimetype()
+        mtype = img.get_format_mimetype() or "application/octet-stream"
         return data, mtype
     if uri.startswith("data:"):  # https://en.wikipedia.org/wiki/Data_URI_scheme#Syntax (limited)
         mtype_and_data = uri[len("data:"):]
