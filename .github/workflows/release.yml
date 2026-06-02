@@ -56,17 +56,21 @@ jobs:
           echo "package.json after bump:"
           grep '"version"' package.json
       - if: steps.check_recursive.outputs.skip != 'true'
+        # If the version was bumped, commit + force-push tag. If the working
+        # copy already matches CLEAN_VERSION (e.g. someone pre-bumped before
+        # tagging), continue silently — the tag already points at the right
+        # commit and downstream jobs can run as-is.
         run: |
+          if [ -z "$(git status --porcelain package.json)" ]; then
+            echo "package.json is already at $CLEAN_VERSION; no version-bump commit needed."
+            exit 0
+          fi
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-          if git commit -am "Automatically update version to $CLEAN_VERSION"; then
-            git push
-            git tag -f -a "v$CLEAN_VERSION" -m "v$CLEAN_VERSION"
-            git push -f --tags
-          else
-            echo "No source change detected on version update (did you repeat a release tag??)"
-            exit 1
-          fi
+          git commit -m "Automatically update version to $CLEAN_VERSION" package.json
+          git push
+          git tag -f -a "v$CLEAN_VERSION" -m "v$CLEAN_VERSION"
+          git push -f --tags
 
   rebuild:
     needs: update-versions
