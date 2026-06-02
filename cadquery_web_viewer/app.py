@@ -316,6 +316,40 @@ def create_app(
             )
         return version, str(content_hash)
 
+    def _decode_json_url_upload(json_body: dict, glb_f, meta_raw) -> tuple[bytes, str, dict]:
+        if glb_f or meta_raw:
+            abort(400, "Use either JSON body or multipart upload, not both")
+        source_url = json_body.get("url")
+        if not isinstance(source_url, str) or not source_url.strip():
+            abort(400, "JSON body must include non-empty 'url'")
+        source_url = source_url.strip()
+        try:
+            data = fetch_glb_bytes(source_url)
+        except UrlImportError as e:
+            msg = str(e)
+            if "maximum size" in msg.lower():
+                abort(413, msg)
+            abort(502, msg)
+        content_hash_in = json_body.get("hash")
+        content_hash = content_hash_from_bytes(data) if content_hash_in is None else str(content_hash_in)
+        raw_kwargs = json_body.get("kwargs")
+        kwargs: dict = dict(raw_kwargs) if isinstance(raw_kwargs, dict) else {}
+        kwargs.setdefault("source_url", source_url)
+        return data, content_hash, kwargs
+
+    def _decode_multipart_upload(glb_f, meta_raw: str) -> tuple[bytes, str, dict]:
+        try:
+            meta = json.loads(meta_raw)
+        except json.JSONDecodeError:
+            abort(400, "Invalid metadata JSON")
+        if not isinstance(meta, dict):
+            abort(400, "metadata must be a JSON object")
+        content_hash_in = meta.get("hash")
+        if content_hash_in is None:
+            abort(400, "metadata must include 'hash'")
+        kwargs = meta.get("kwargs") if isinstance(meta.get("kwargs"), dict) else {}
+        return glb_f.read(), str(content_hash_in), kwargs
+
     @bp.route("/object/<path:name>", methods=["PUT", "OPTIONS"])
     def api_object_put(name: str):
         if request.method == "OPTIONS":
@@ -325,46 +359,20 @@ def create_app(
         meta_raw = request.form.get("metadata")
         json_body = request.get_json(silent=True) if request.is_json else None
 
-        if json_body is not None:
-            if glb_f or meta_raw:
-                abort(400, "Use either JSON body or multipart upload, not both")
-            if not isinstance(json_body, dict):
+        use_json = isinstance(json_body, dict)
+        use_multipart = bool(glb_f and meta_raw)
+        if not use_json and not use_multipart:
+            if json_body is not None:
                 abort(400, "Expected JSON object body")
-            source_url = json_body.get("url")
-            if not isinstance(source_url, str) or not source_url.strip():
-                abort(400, "JSON body must include non-empty 'url'")
-            source_url = source_url.strip()
-            try:
-                data = fetch_glb_bytes(source_url)
-            except UrlImportError as e:
-                msg = str(e)
-                if "maximum size" in msg.lower():
-                    abort(413, msg)
-                abort(502, msg)
-            content_hash = json_body.get("hash")
-            if content_hash is None:
-                content_hash = content_hash_from_bytes(data)
-            else:
-                content_hash = str(content_hash)
-            raw_kwargs = json_body.get("kwargs")
-            kwargs: dict = dict(raw_kwargs) if isinstance(raw_kwargs, dict) else {}
-            kwargs.setdefault("source_url", source_url)
-        elif glb_f and meta_raw:
-            try:
-                meta = json.loads(meta_raw)
-            except json.JSONDecodeError:
-                abort(400, "Invalid metadata JSON")
-            content_hash = meta.get("hash")
-            if content_hash is None:
-                abort(400, "metadata must include 'hash'")
-            kwargs = meta.get("kwargs") if isinstance(meta.get("kwargs"), dict) else {}
-            data = glb_f.read()
-            content_hash = str(content_hash)
+            abort(400, "Expected multipart fields 'glb' and 'metadata', or JSON body with 'url'")
+
+        # Binary if/else: both branches assign data/content_hash/kwargs unconditionally,
+        # so the post-block uses are always bound (avoids CodeQL py/uninitialized-local-variable
+        # false positive when the dispatcher relies on flask.abort() being NoReturn).
+        if use_json:
+            data, content_hash, kwargs = _decode_json_url_upload(json_body, glb_f, meta_raw)
         else:
-            abort(
-                400,
-                "Expected multipart fields 'glb' and 'metadata', or JSON body with 'url'",
-            )
+            data, content_hash, kwargs = _decode_multipart_upload(glb_f, meta_raw)
 
         version, content_hash = _store_glb_version(name, content_hash, data, kwargs)
         resp_body = json.dumps(

@@ -1,0 +1,21 @@
+name: cadquery-web-viewer CodeQL config
+
+# Default queries plus security-and-quality, matching codeql.yml's `queries:`.
+queries:
+  - uses: security-and-quality
+
+# Targeted, justified suppressions. Each entry must reference the design
+# document that owns the decision so a reviewer can re-evaluate later.
+query-filters:
+  # py/full-ssrf in cadquery_web_viewer/url_import.py is the documented
+  # behavior of `PUT /api/object/<name>` with `{"url": "..."}` — the server
+  # fetches a user-provided URL on purpose. The trust model is documented
+  # in SECURITY.md and docs/api.md ("Trust model" section): the viewer is
+  # intended for localhost / trusted networks only, with a reverse proxy
+  # taking over the policy decision when exposed beyond that. Re-enable
+  # this rule and add IP / DNS allowlisting if the deployment posture
+  # changes.
+  - exclude:
+      id: py/full-ssrf
+      paths:
+        - cadquery_web_viewer/url_import.py

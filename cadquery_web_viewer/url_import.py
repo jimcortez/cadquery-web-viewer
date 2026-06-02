@@ -28,6 +28,15 @@ def validate_glb_bytes(data: bytes) -> None:
 
 
 def fetch_glb_bytes(url: str) -> bytes:
+    """Fetch a remote GLB by user-provided URL.
+
+    The fetch target is intentionally the unmodified caller-supplied URL — this
+    is the documented behavior of ``PUT /api/object/<name>`` JSON mode and the
+    GLB-from-URL viewer feature. SSRF is accepted by design under the
+    "trusted/local network only" trust model documented in SECURITY.md and
+    docs/api.md. The corresponding CodeQL ``py/full-ssrf`` finding is
+    suppressed in .github/codeql/codeql-config.yml.
+    """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise UrlImportError("url must use http or https")
