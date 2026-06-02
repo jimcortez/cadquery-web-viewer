@@ -23,7 +23,10 @@ jobs:
       - id: check_recursive
         run: |
           git fetch --tags
-          tag_commit=$(git rev-parse "${{ github.ref }}")
+          # Dereference to the underlying commit so annotated tags compare correctly
+          # (`git rev-parse refs/tags/<tag>` returns the tag-object SHA for annotated
+          # tags, not the commit SHA, which would always look "recursive").
+          tag_commit=$(git rev-parse "${{ github.ref }}^{commit}")
           main_commit=$(git rev-parse main)
           if [ "$tag_commit" != "$main_commit" ]; then
               echo "::warning::The tag commit $tag_commit does not match the latest main commit $main_commit. This is probably a recursive tag push that will be ignored."
