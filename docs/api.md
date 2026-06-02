@@ -6,6 +6,18 @@ Assumed base URL: `http://<host>:<port>` (default port **32323**). Interactive u
 
 ---
 
+## Trust model
+
+`cadquery-web-viewer` is a developer tool; the HTTP server is intended to run on **localhost or a trusted network**. The defaults that make local development convenient also expand the attack surface if the server is exposed to untrusted clients:
+
+- **CORS is wide open.** Every response carries `Access-Control-Allow-Origin: *`, so any origin (including pages you didn't author) can call the API from a browser tab.
+- **URL import.** `PUT /api/object/<name>` accepts a JSON body of the form `{"url": "https://…"}`. The server fetches that URL over `http`/`https` and stores the GLB. Fetches are capped at `MAX_GLB_BYTES` (50 MB; see `cadquery_web_viewer/url_import.py`), but the URL itself is otherwise unrestricted (any host, any path). This is convenient but means any caller can cause the server to make arbitrary outbound HTTP requests.
+- **No auth, rate limiting, or TLS.** The runtime is plain `flask.Flask.run`. Use a reverse proxy (e.g. nginx, Caddy, Traefik) if you need any of those.
+
+**Recommendation:** bind to a private interface (`--host 127.0.0.1` is the default) and front the server with a reverse proxy if you need to expose it to other machines. To opt out of URL import entirely, block requests to `PUT /api/object/<name>` with a JSON body at the proxy. See [SECURITY.md](../SECURITY.md) for the full hardening guide and the private vulnerability-reporting channel.
+
+---
+
 ## Typical remote workflow
 
 1. **`PUT /api/object/<name>`** — store a GLB version (does not update the viewer).

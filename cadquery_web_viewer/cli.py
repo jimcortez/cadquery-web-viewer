@@ -13,6 +13,8 @@ DEFAULT_CACHE_DIR = None
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
     parser = argparse.ArgumentParser(description="cadquery-web-viewer — Flask GLB/CAD viewer")
     parser.add_argument(
         "--host",
@@ -38,6 +40,9 @@ def main() -> None:
     )
     args = parser.parse_args()
     app = create_app(cache_mode=args.cache_mode, cache_dir=args.cache_dir)
+    logger.info(
+        "cadquery-web-viewer is intended for trusted/local networks; see SECURITY.md"
+    )
     logger.info("Starting Flask on http://%s:%s", args.host, args.port)
     app.run(host=args.host, port=args.port, threaded=True, use_reloader=False)
 

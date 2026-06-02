@@ -1,8 +1,27 @@
 # CadQuery Web Viewer
 
-**Preview CadQuery or build123d models in your browser** and refresh the view while you edit Python—without manually exporting meshes each time.
+[![PyPI](https://img.shields.io/pypi/v/cadquery-web-viewer.svg)](https://pypi.org/project/cadquery-web-viewer/)
+[![Python](https://img.shields.io/pypi/pyversions/cadquery-web-viewer.svg)](https://pypi.org/project/cadquery-web-viewer/)
+[![License](https://img.shields.io/pypi/l/cadquery-web-viewer.svg)](LICENSE)
+[![CI](https://github.com/jimcortez/cadquery-web-viewer/actions/workflows/ci.yml/badge.svg)](https://github.com/jimcortez/cadquery-web-viewer/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/pypi/dm/cadquery-web-viewer.svg)](https://pypi.org/project/cadquery-web-viewer/)
 
-The API and packaging are meant to be a **mostly drop-in replacement** for [Yet Another CAD Viewer (YACV)](https://github.com/yeicor-3d/yet-another-cad-viewer). Package renames and choosing how Python talks to the viewer—embedded server, separate server process, or buffer-only (`server_type`)—are covered in [Migrating from `yacv-server` / `yacv-viewer`](docs/yacv_migration.md); project history and upstream links are in **Special thanks** at the end of this file.
+**Preview CadQuery or build123d models in your browser** and refresh the view while you edit Python — without manually exporting meshes each time.
+
+[**Try it live →**](https://jimcortez.github.io/cadquery-web-viewer/)
+
+![CadQuery Web Viewer screenshot](assets/screenshot.png)
+
+> Place a screenshot or short GIF of the running viewer at `assets/screenshot.png`. The image is referenced here so the README renders the hero once committed; until then GitHub will show a broken image. Open an issue if you'd like a starting screenshot grabbed from the live demo.
+
+## What you get
+
+- **Browser viewer** for 3D models: orbit, zoom, measurements, clipping, transparency, and related viewing tools.
+- **glTF 2.0 / GLB** — a standard mesh format many 3D tools understand. The UI is built around the web [model-viewer](https://modelviewer.dev/) component, so you get common material and lighting behavior in the browser.
+- **Live updates** while you change geometry in Python (the app keeps a channel open so the page can refresh when you publish again).
+- **Optional disk cache** for uploaded GLBs when you run the long-lived server — see [Usage](docs/usage.md).
+
+The API and packaging are meant to be a **mostly drop-in replacement** for [Yet Another CAD Viewer (YACV)](https://github.com/yeicor-3d/yet-another-cad-viewer). Package renames and choosing how Python talks to the viewer — embedded server, separate server process, or buffer-only (`server_type`) — are covered in [Migrating from `yacv-server` / `yacv-viewer`](docs/yacv_migration.md); project history and upstream links are in **Special thanks** at the end of this file.
 
 ## Table of contents
 
@@ -10,20 +29,13 @@ The API and packaging are meant to be a **mostly drop-in replacement** for [Yet 
 - [What you get](#what-you-get)
 - [Documentation](#documentation)
 - [Examples in this repo](#examples-in-this-repo)
-- [Related projects](#related-projects)
+- [Trust model](#trust-model)
+- [Contributing](#contributing)
 - [Special thanks](#special-thanks)
-
-## Documentation
-
-- [Installation](docs/install.md) — pipx, uv tool, Docker, and other install paths
-- [Usage](docs/usage.md) — long-lived server, cache, `show()` options
-- [HTTP API](docs/api.md) — Flask `/api` endpoints (SSE, GLB upload, static UI)
-- [Migrating from YACV](docs/yacv_migration.md)
-- [Development](docs/development.md)
 
 ## Quick start
 
-Requires **Python 3.10 through 3.12** (see `requires-python` in `pyproject.toml`).
+Requires **Python 3.10 through 3.12** (see `requires-python` in `pyproject.toml`). Python 3.13 is blocked upstream by `vtk==9.3.1` (transitively pinned via `build123d` → `cadquery-ocp` 7.8.x), which only ships wheels for `cp310`–`cp312`; this will lift when `build123d` adopts `cadquery-ocp` 7.9.3.1+.
 
 ### Install with pip
 
@@ -77,12 +89,14 @@ show(
 )
 ```
 
-## What you get
+## Documentation
 
-- **Browser viewer** for 3D models: orbit, zoom, measurements, clipping, transparency, and related viewing tools.
-- **glTF 2.0 / GLB** — a standard mesh format many 3D tools understand. The UI is built around the web [model-viewer](https://modelviewer.dev/) component, so you get common material and lighting behavior in the browser.
-- **Live updates** while you change geometry in Python (the app keeps a channel open so the page can refresh when you publish again).
-- **Optional disk cache** for uploaded GLBs when you run the long-lived server — see [Usage](docs/usage.md).
+- [Installation](docs/install.md) — pipx, uv tool, Docker, and other install paths
+- [Usage](docs/usage.md) — long-lived server, cache, `show()` options
+- [HTTP API](docs/api.md) — Flask `/api` endpoints (SSE, GLB upload, static UI), trust model
+- [Migrating from YACV](docs/yacv_migration.md)
+- [Development](docs/development.md)
+- [Changelog](CHANGELOG.md)
 
 ## Examples in this repo
 
@@ -91,8 +105,22 @@ show(
 | [`examples/in-process/`](examples/in-process/) | Full build123d sample, `show()` with optional textures; with `CI` set, runs `export_all("export")` after the viewer closes (not run in GitHub Actions). |
 | [`examples/remote/`](examples/remote/) | Same style of model sent with `server_type="remote"`. |
 
+## Trust model
+
+`cadquery-web-viewer` is intended for **localhost or trusted networks only**:
+
+- The HTTP API serves CORS `Access-Control-Allow-Origin: *`, so any origin may call it from a browser.
+- `PUT /api/object/<name>` accepts a JSON body with a `url` field and the server fetches that URL (up to 50 MB) over `http`/`https`.
+- The Python runtime is plain `flask.Flask.run` — there is no auth, rate limiting, or TLS.
+
+For details and operational guidance, see [SECURITY.md](SECURITY.md) and the *Trust model* section of [docs/api.md](docs/api.md).
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the dev loop, test/lint/typecheck commands, and PR conventions. Bug reports and feature requests are welcome on the [issue tracker](https://github.com/jimcortez/cadquery-web-viewer/issues).
+
 ## Special thanks
 
-[Yet Another CAD Viewer (YACV)](https://github.com/yeicor-3d/yet-another-cad-viewer) by Yeicor and contributors is the orginal project: a web-based CAD and GLB viewer with a Python backend for live tessellation, hot reload, and static export. This repository is a hard fork, with credit to the original authors.
+[Yet Another CAD Viewer (YACV)](https://github.com/yeicor-3d/yet-another-cad-viewer) by Yeicor and contributors is the original project: a web-based CAD and GLB viewer with a Python backend for live tessellation, hot reload, and static export. This repository is a hard fork, with credit to the original authors.
 
 [MIT License](LICENSE). Third-party notices: [assets/licenses.txt](assets/licenses.txt).

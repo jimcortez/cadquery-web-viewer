@@ -11,7 +11,10 @@ from cadquery_web_viewer.glb_cache import utc_now_iso
 
 SettingsValue = str | int | float | None
 
-_UNSET = object()
+# Public sentinel for "do not change". Use ``UNSET`` from outside this module;
+# ``_UNSET`` is kept as a backwards-compatible alias for code in the wild.
+UNSET: object = object()
+_UNSET = UNSET
 
 
 @dataclass
