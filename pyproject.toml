@@ -4,12 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadquery-web-viewer"
-version = "2.0.0"
 description = "Web server and viewer for GLB/CAD preview (forked from Yet Another CAD Viewer)"
 authors = [{ name = "Jim Cortez", email = "jim@jimcortez.com" }]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
+dynamic = ["version"]
 dependencies = [
     "build123d>=0.10,<0.11",
     "flask>=3.1",
@@ -22,10 +22,19 @@ dependencies = [
 dev = [
     "pyright>=1.1.409",
     "ruff>=0.15.0",
+    # [toml] extra is required on Python <3.11 so coverage can read [tool.coverage] from pyproject.toml.
+    "coverage[toml]>=7.6",
 ]
 
 [project.scripts]
 cadquery-web-viewer = "cadquery_web_viewer.cli:main"
+
+[tool.hatch.version]
+# Single source of version truth: package.json. Hatchling's regex source reads it
+# at build time, so neither pyproject.toml nor any other file needs to be kept in sync.
+source = "regex"
+path = "package.json"
+pattern = '"version":\s*"(?P<version>[^"]+)"'
 
 [tool.hatch.build.targets.wheel]
 packages = [ "cadquery_web_viewer" ]
@@ -45,25 +54,39 @@ src = ["cadquery_web_viewer", "hatch_build.py"]
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
 
+[tool.coverage.run]
+source = ["cadquery_web_viewer"]
+omit = ["cadquery_web_viewer/frontend/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
+
 [tool.pyright]
-pythonVersion = "3.12"
+pythonVersion = "3.13"
 typeCheckingMode = "basic"
 include = ["cadquery_web_viewer", "hatch_build.py"]
 exclude = ["cadquery_web_viewer/frontend"]
 reportMissingImports = "none"
 reportMissingModuleSource = "none"
-reportArgumentType = false
-reportReturnType = false
-reportAssignmentType = false
+# First pass: promote previously-disabled checks to "warning" so CI surfaces them
+# without failing. Track in CHANGELOG; flip these back to "error" in a follow-up.
+reportArgumentType = "warning"
+reportReturnType = "warning"
+reportAssignmentType = "warning"
+reportOptionalMemberAccess = "warning"
+reportOptionalSubscript = "warning"
+reportCallIssue = "warning"
+reportAttributeAccessIssue = "warning"
+# Still suppressed: noisy under build123d / OCP stubs and used pervasively today.
 reportOptionalCall = false
 reportOptionalIterable = false
 reportOptionalContextManager = false
 reportPrivateUsage = false
-reportAttributeAccessIssue = false
 reportGeneralTypeIssues = false
 reportOperatorIssue = false
 reportOptionalOperand = false
-reportOptionalSubscript = false
-reportOptionalMemberAccess = false
-reportCallIssue = false
-

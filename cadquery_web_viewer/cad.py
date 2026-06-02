@@ -24,13 +24,15 @@ def get_color(obj: Any) -> ColorTuple | None:
     if 'color' in dir(obj):
         obj = obj.color
     if isinstance(obj, tuple):
-        c = None
+        c: tuple = ()
         if len(obj) == 3:
             c = obj + (1,)
         elif len(obj) == 4:
             c = obj
-        # noinspection PyTypeChecker
-        return tuple(min(max(float(x), 0), 1) for x in c)
+        if not c:
+            return None
+        clamped = tuple(min(max(float(x), 0), 1) for x in c)
+        return (clamped[0], clamped[1], clamped[2], clamped[3])
     if isinstance(obj, Color):
         return obj.to_tuple()
     return None

@@ -12,14 +12,16 @@ from flask import Blueprint, Flask, Response, abort, request, send_from_director
 
 from cadquery_web_viewer.engine import CadQueryWebViewer, ScenePublishError
 from cadquery_web_viewer.events_api import (
-    OBJECT_CREATED,
     OBJECT_REMOVED,
-    OBJECT_VERSIONED,
     event_to_json,
-    validate_event,
 )
 from cadquery_web_viewer.glb_cache import GlbDiskCache
-from cadquery_web_viewer.object_store import validate_settings_map
+from cadquery_web_viewer.object_store import UNSET, validate_settings_map
+from cadquery_web_viewer.url_import import (
+    UrlImportError,
+    content_hash_from_bytes,
+    fetch_glb_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -126,19 +128,8 @@ def _hydrate_from_disk(engine: CadQueryWebViewer, disk_cache: GlbDiskCache) -> N
                     e.kwargs,
                     created_at=e.created_at,
                 )
-            latest = max(e.version for e in entries)
-            latest_entry = next(e for e in entries if e.version == latest)
-            try:
-                engine.publish_event_checked(
-                    {
-                        "type": OBJECT_CREATED,
-                        "name": name,
-                        "version": latest,
-                        "hash": latest_entry.content_hash,
-                    }
-                )
-            except ScenePublishError as ex:
-                logger.warning("Hydrate publish skipped for %s: %s", name, ex)
+            # Restored objects are listed via GET /api/object; do not publish SSE here
+            # (would flood new browser tabs with object.created and load every cached GLB).
 
 
 def _publish_removed_if_needed(engine: CadQueryWebViewer, name: str) -> None:
@@ -183,7 +174,11 @@ def create_app(
             with engine.frontend_lock.r_locked():
                 if engine.shutting_down.is_set() and engine.at_least_one_client.is_set():
                     return
-                subscription = engine.scene_events.subscribe(yield_timeout=1.0)
+                # Live events only — do not replay the buffered history (hydrate / past publishes).
+                subscription = engine.scene_events.subscribe(
+                    include_buffered=False,
+                    yield_timeout=1.0,
+                )
                 try:
                     for data in subscription:
                         if data is None:
@@ -229,6 +224,13 @@ def create_app(
             abort(400, str(e))
         return _cors(Response(status=204))
 
+    @bp.route("/scene", methods=["GET", "OPTIONS"])
+    def api_scene():
+        if request.method == "OPTIONS":
+            return _cors(Response(status=204))
+        body = json.dumps({"names": engine.shown_object_names()}, separators=(",", ":"))
+        return _cors(Response(body, mimetype="application/json"))
+
     @bp.route("/object", methods=["GET", "OPTIONS"])
     def api_object_list():
         if request.method == "OPTIONS":
@@ -246,7 +248,7 @@ def create_app(
         if request.method == "OPTIONS":
             return _cors(Response(status=204))
         with engine.build_events_lock:
-            for name in list(engine._scene_active):
+            for name in list(engine.scene_active_names()):
                 _publish_removed_if_needed(engine, name)
             engine.delete_all_objects()
             if disk_cache is not None:
@@ -291,24 +293,12 @@ def create_app(
         r.headers["E-Tag"] = f'"{etag}"'
         return _cors(r)
 
-    @bp.route("/object/<path:name>", methods=["PUT", "OPTIONS"])
-    def api_object_put(name: str):
-        if request.method == "OPTIONS":
-            return _cors(Response(status=204))
-        name = unquote(name)
-        glb_f = request.files.get("glb")
-        meta_raw = request.form.get("metadata")
-        if not glb_f or not meta_raw:
-            abort(400, "Expected multipart fields 'glb' and 'metadata'")
-        try:
-            meta = json.loads(meta_raw)
-        except json.JSONDecodeError:
-            abort(400, "Invalid metadata JSON")
-        content_hash = meta.get("hash")
-        if content_hash is None:
-            abort(400, "metadata must include 'hash'")
-        kwargs = meta.get("kwargs") if isinstance(meta.get("kwargs"), dict) else {}
-        data = glb_f.read()
+    def _store_glb_version(
+        name: str,
+        content_hash: str,
+        data: bytes,
+        kwargs: dict,
+    ) -> tuple[int, str]:
         force_version = _parse_force_version()
         with engine.build_events_lock:
             version, created_at = engine.put_object_version(
@@ -324,8 +314,69 @@ def create_app(
             _disk_sync_put(
                 disk_cache, name, version, str(content_hash), data, kwargs, created_at, notes, settings
             )
+        return version, str(content_hash)
+
+    def _decode_json_url_upload(json_body: dict, glb_f, meta_raw) -> tuple[bytes, str, dict]:
+        if glb_f or meta_raw:
+            abort(400, "Use either JSON body or multipart upload, not both")
+        source_url = json_body.get("url")
+        if not isinstance(source_url, str) or not source_url.strip():
+            abort(400, "JSON body must include non-empty 'url'")
+        source_url = source_url.strip()
+        try:
+            data = fetch_glb_bytes(source_url)
+        except UrlImportError as e:
+            msg = str(e)
+            if "maximum size" in msg.lower():
+                abort(413, msg)
+            abort(502, msg)
+        content_hash_in = json_body.get("hash")
+        content_hash = content_hash_from_bytes(data) if content_hash_in is None else str(content_hash_in)
+        raw_kwargs = json_body.get("kwargs")
+        kwargs: dict = dict(raw_kwargs) if isinstance(raw_kwargs, dict) else {}
+        kwargs.setdefault("source_url", source_url)
+        return data, content_hash, kwargs
+
+    def _decode_multipart_upload(glb_f, meta_raw: str) -> tuple[bytes, str, dict]:
+        try:
+            meta = json.loads(meta_raw)
+        except json.JSONDecodeError:
+            abort(400, "Invalid metadata JSON")
+        if not isinstance(meta, dict):
+            abort(400, "metadata must be a JSON object")
+        content_hash_in = meta.get("hash")
+        if content_hash_in is None:
+            abort(400, "metadata must include 'hash'")
+        kwargs = meta.get("kwargs") if isinstance(meta.get("kwargs"), dict) else {}
+        return glb_f.read(), str(content_hash_in), kwargs
+
+    @bp.route("/object/<path:name>", methods=["PUT", "OPTIONS"])
+    def api_object_put(name: str):
+        if request.method == "OPTIONS":
+            return _cors(Response(status=204))
+        name = unquote(name)
+        glb_f = request.files.get("glb")
+        meta_raw = request.form.get("metadata")
+        json_body = request.get_json(silent=True) if request.is_json else None
+
+        use_json = isinstance(json_body, dict)
+        use_multipart = bool(glb_f and meta_raw)
+        if not use_json and not use_multipart:
+            if json_body is not None:
+                abort(400, "Expected JSON object body")
+            abort(400, "Expected multipart fields 'glb' and 'metadata', or JSON body with 'url'")
+
+        # Binary if/else: both branches assign data/content_hash/kwargs unconditionally,
+        # so the post-block uses are always bound (avoids CodeQL py/uninitialized-local-variable
+        # false positive when the dispatcher relies on flask.abort() being NoReturn).
+        if use_json:
+            data, content_hash, kwargs = _decode_json_url_upload(json_body, glb_f, meta_raw)
+        else:
+            data, content_hash, kwargs = _decode_multipart_upload(glb_f, meta_raw)
+
+        version, content_hash = _store_glb_version(name, content_hash, data, kwargs)
         resp_body = json.dumps(
-            {"name": name, "version": version, "hash": str(content_hash)},
+            {"name": name, "version": version, "hash": content_hash},
             separators=(",", ":"),
         )
         r = Response(resp_body, status=201, mimetype="application/json")
@@ -355,9 +406,7 @@ def create_app(
                 settings_merge = validate_settings_map(body["settings"])
             except ValueError as e:
                 abort(400, str(e))
-        from cadquery_web_viewer.object_store import _UNSET
-
-        notes_arg: str | None | object = body["notes"] if has_notes else _UNSET
+        notes_arg: str | None | object = body["notes"] if has_notes else UNSET
         try:
             with engine.build_events_lock:
                 desc = engine.patch_object(

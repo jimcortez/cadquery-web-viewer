@@ -1137,7 +1137,7 @@ The following npm packages may be included in this product:
 
  - @lit/reactive-element@2.1.2
  - lit-element@4.2.2
- - lit@3.3.2
+ - lit@3.3.3
 
 These packages each contain the following license:
 
@@ -1174,7 +1174,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The following npm package may be included in this product:
 
- - lit-html@3.3.2
+ - lit-html@3.3.3
 
 This package contains the following license:
 
@@ -1211,7 +1211,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The following npm package may be included in this product:
 
- - @lit-labs/ssr-dom-shim@1.5.1
+ - @lit-labs/ssr-dom-shim@1.6.0
 
 This package contains the following license:
 
@@ -1250,7 +1250,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 The following npm package may be included in this product:
 
- - @babel/parser@7.29.3
+ - @babel/parser@7.29.7
 
 This package contains the following license:
 
@@ -1370,6 +1370,22 @@ EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 The following npm package may be included in this product:
 
+ - @ctrl/tinycolor@3.6.1
+
+This package contains the following license:
+
+Copyright (c) Scott Cooper <scttcper@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+-----------
+
+The following npm package may be included in this product:
+
  - magic-string@0.30.21
 
 This package contains the following license:
@@ -1448,6 +1464,22 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 The following npm package may be included in this product:
 
+ - material-colors@1.2.6
+
+This package contains the following license:
+
+ISC License
+
+Copyright 2014 Shuhei Kagawa
+
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+-----------
+
+The following npm package may be included in this product:
+
  - @img/sharp-libvips-darwin-arm64@1.2.4
 
 This package contains the following license:
@@ -1458,9 +1490,9 @@ LGPL-3.0-or-later
 
 The following npm packages may be included in this product:
 
- - @babel/helper-string-parser@7.27.1
- - @babel/helper-validator-identifier@7.28.5
- - @babel/types@7.29.0
+ - @babel/helper-string-parser@7.29.7
+ - @babel/helper-validator-identifier@7.29.7
+ - @babel/types@7.29.7
 
 These packages each contain the following license:
 
@@ -1528,6 +1560,36 @@ This package contains the following license:
 MIT License
 
 Copyright (c) 2020 jrj2211
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+-----------
+
+The following npm package may be included in this product:
+
+ - @ckpack/vue-color@1.6.0
+
+This package contains the following license:
+
+MIT License
+
+Copyright (c) 2021 chenkai0520
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1641,7 +1703,7 @@ The MIT license applies to all non-font and non-icon files.
 
 The following npm package may be included in this product:
 
- - semver@7.8.0
+ - semver@7.8.1
 
 This package contains the following license:
 
@@ -1665,13 +1727,13 @@ IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 The following npm package may be included in this product:
 
- - three@0.125.2
+ - three@0.182.0
 
 This package contains the following license:
 
 The MIT License
 
-Copyright © 2010-2021 three.js authors
+Copyright © 2010-2025 three.js authors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1695,37 +1757,7 @@ THE SOFTWARE.
 
 The following npm package may be included in this product:
 
- - three@0.184.0
-
-This package contains the following license:
-
-The MIT License
-
-Copyright © 2010-2026 three.js authors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
------------
-
-The following npm package may be included in this product:
-
- - vuetify@4.0.7
+ - vuetify@4.0.8
 
 This package contains the following license:
 
@@ -1755,16 +1787,16 @@ THE SOFTWARE.
 
 The following npm packages may be included in this product:
 
- - @vue/compiler-core@3.5.34
- - @vue/compiler-dom@3.5.34
- - @vue/compiler-sfc@3.5.34
- - @vue/compiler-ssr@3.5.34
- - @vue/reactivity@3.5.34
- - @vue/runtime-core@3.5.34
- - @vue/runtime-dom@3.5.34
- - @vue/server-renderer@3.5.34
- - @vue/shared@3.5.34
- - vue@3.5.34
+ - @vue/compiler-core@3.5.35
+ - @vue/compiler-dom@3.5.35
+ - @vue/compiler-sfc@3.5.35
+ - @vue/compiler-ssr@3.5.35
+ - @vue/reactivity@3.5.35
+ - @vue/runtime-core@3.5.35
+ - @vue/runtime-dom@3.5.35
+ - @vue/server-renderer@3.5.35
+ - @vue/shared@3.5.35
+ - vue@3.5.35
 
 These packages each contain the following license:
 
@@ -1918,7 +1950,7 @@ THE SOFTWARE.
 
 The following npm package may be included in this product:
 
- - postcss@8.5.14
+ - postcss@8.5.15
 
 This package contains the following license:
 

@@ -2,17 +2,23 @@
 <script lang="ts" setup>
 import { defineAsyncComponent, provide, type Ref, ref, shallowRef } from "vue";
 import Sidebar from "./misc/Sidebar.vue";
+import LeftSidebar from "./misc/LeftSidebar.vue";
 import Loading from "./misc/Loading.vue";
 import Tools from "./tools/Tools.vue";
 import Models from "./models/Models.vue";
+import SceneSidebar from "./models/SceneSidebar.vue";
 import { VBtn, VLayout, VMain, VToolbarTitle } from "vuetify/lib/components/index.mjs";
 import { Document } from "@gltf-transform/core";
 import type ModelViewerWrapperT from "./viewer/ModelViewerWrapper.vue";
 import { mdiPlus } from "@mdi/js";
 import SvgIcon from "@jamescoyle/vue-icon";
 import { disableTapKey, sceneDocumentKey } from "./injectionKeys";
+import { createViewerSceneSettingsProvider } from "./composables/useViewerSceneSettings";
+import { createModelDisplaySettingsProvider } from "./composables/useModelDisplaySettings";
+import { settings } from "./misc/settings";
 import { useAppModelLoading } from "./composables/useAppModelLoading";
 import { useGltfFileDrop } from "./composables/useGltfFileDrop";
+import ObjectPickerDialog from "./models/ObjectPickerDialog.vue";
 
 const ModelViewerWrapper = defineAsyncComponent({
   loader: () => import("./viewer/ModelViewerWrapper.vue"),
@@ -27,6 +33,10 @@ const viewer: Ref<InstanceType<typeof ModelViewerWrapperT> | null> = ref(null);
 const sceneDocument = shallowRef(new Document());
 provide(sceneDocumentKey, { sceneDocument });
 
+createViewerSceneSettingsProvider();
+const modelDisplaySettings = createModelDisplaySettingsProvider();
+void settings.then((s) => modelDisplaySettings.setDefaultEdgeWidth(s.edgeWidth));
+
 const models: Ref<InstanceType<typeof Models> | null> = ref(null);
 const tools: Ref<InstanceType<typeof Tools> | null> = ref(null);
 
@@ -36,8 +46,27 @@ function setDisableTap(val: boolean) {
 }
 provide(disableTapKey, { disableTap, setDisableTap });
 
-const { preloadingModels, onModelRemoveRequest, loadModelManual, networkMgr } =
-  useAppModelLoading(viewer, sceneDocument, tools, sceneUrl);
+const {
+  preloadingModels,
+  onModelRemoveRequest,
+  openObjectPicker,
+  pickerOpen,
+  networkMgr,
+  apiBaseUrl,
+  objects,
+  listLoading,
+  listError,
+  urlInput,
+  urlLoading,
+  urlError,
+  refreshObjectList,
+  isSelected,
+  getRowVersion,
+  allVersions,
+  toggleObject,
+  onVersionChange,
+  loadFromUrl,
+} = useAppModelLoading(viewer, sceneDocument, tools, sceneUrl);
 
 useGltfFileDrop(networkMgr);
 </script>
@@ -52,8 +81,8 @@ useGltfFileDrop(networkMgr);
       />
       <div v-else style="height: 100%; overflow-y: auto">
         <v-toolbar-title class="text-center ma-16 text-h5">No model loaded</v-toolbar-title>
-        <v-btn class="mx-auto d-block my-4" @click="loadModelManual">
-          <svg-icon :path="mdiPlus" type="mdi" />&nbsp; Load model manually...
+        <v-btn class="mx-auto d-block my-4" @click="openObjectPicker">
+          <svg-icon :path="mdiPlus" type="mdi" />&nbsp; Load model...
         </v-btn>
         <span v-if="preloadingModels.length > 0" class="d-block text-center my-16">
           <span class="d-block text-center text-h6">Still trying to load the following:</span>
@@ -66,17 +95,19 @@ useGltfFileDrop(networkMgr);
       </div>
     </v-main>
 
-    <sidebar :opened-init="openSidebarsByDefault" :width="300" side="left">
-      <template #toolbar>
-        <v-toolbar-title>Models</v-toolbar-title>
-      </template>
-      <template #toolbar-items>
-        <v-btn icon="" @click="loadModelManual">
+    <left-sidebar :opened-init="openSidebarsByDefault" :width="320">
+      <template #models-toolbar-items>
+        <v-btn icon @click="openObjectPicker">
           <svg-icon :path="mdiPlus" type="mdi" />
         </v-btn>
       </template>
-      <models ref="models" :viewer="viewer" @remove-model="onModelRemoveRequest" />
-    </sidebar>
+      <template #models>
+        <models ref="models" :viewer="viewer" @remove-model="onModelRemoveRequest" />
+      </template>
+      <template #scene>
+        <scene-sidebar :viewer="viewer" />
+      </template>
+    </left-sidebar>
 
     <sidebar :opened-init="openSidebarsByDefault" :width="48 * 3 + 1" side="right">
       <template #toolbar>
@@ -84,6 +115,24 @@ useGltfFileDrop(networkMgr);
       </template>
       <tools ref="tools" :viewer="viewer" @find-model="models?.findModel" />
     </sidebar>
+
+    <object-picker-dialog
+      v-model="pickerOpen"
+      :api-base-url="apiBaseUrl"
+      :objects="objects"
+      :list-loading="listLoading"
+      :list-error="listError"
+      v-model:url-input="urlInput"
+      :url-loading="urlLoading"
+      :url-error="urlError"
+      :is-selected="isSelected"
+      :get-row-version="getRowVersion"
+      :all-versions="allVersions"
+      @refresh="refreshObjectList()"
+      @toggle-object="(desc, selected) => toggleObject(desc, selected)"
+      @version-change="onVersionChange"
+      @load-from-url="loadFromUrl()"
+    />
   </v-layout>
 </template>
 

@@ -1,0 +1,6 @@
+# Code ownership for cadquery-web-viewer.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
+#
+# A single owner is fine; this primarily activates auto-review-request on PRs.
+
+* @jimcortez

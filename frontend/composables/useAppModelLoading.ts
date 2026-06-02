@@ -6,6 +6,7 @@ import { NetworkManager, NetworkUpdateEvent, NetworkUpdateEventModel } from "../
 import { SceneMgr } from "../misc/scene";
 import { isViewerReady } from "../viewer/viewerUtils";
 import type ModelViewerWrapperT from "../viewer/ModelViewerWrapper.vue";
+import { useObjectPicker } from "./useObjectPicker";
 
 export type ToolsApi = {
   removeObjectSelections: (name: string) => void;
@@ -94,11 +95,11 @@ export function useAppModelLoading(
     }
   })();
 
-  async function loadModelManual() {
-    const modelUrl = prompt(
-      "For live CAD/GLTF updates from Python, install the cadquery-web-viewer package and run the Flask app, then load models via the server URL.\n\nOtherwise, enter the URL of a .glb/.gltf file to load:",
-    );
-    if (modelUrl) await networkMgr.load(modelUrl);
+  const pickerOpen = ref(false);
+  const objectPicker = useObjectPicker(networkMgr, sceneDocument, pickerOpen);
+
+  function openObjectPicker() {
+    void objectPicker.openDialog();
   }
 
   return {
@@ -106,6 +107,8 @@ export function useAppModelLoading(
     preloadingModels,
     onModelUpdateRequest,
     onModelRemoveRequest,
-    loadModelManual,
+    openObjectPicker,
+    pickerOpen,
+    ...objectPicker,
   };
 }

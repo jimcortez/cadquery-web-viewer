@@ -4,11 +4,12 @@ FROM node:22-bookworm-slim AS frontend
 
 WORKDIR /src
 
-RUN corepack enable \
-    && corepack prepare yarn@1.22.22 --activate
+# Yarn 4 (Berry) is supplied via Corepack; the version is pinned in
+# package.json#packageManager so we don't have to mention it here.
+RUN corepack enable
 
-COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile
+COPY package.json yarn.lock .yarnrc.yml ./
+RUN yarn install --immutable
 
 COPY . .
 
@@ -37,7 +38,7 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY pyproject.toml hatch_build.py README.md LICENSE ./
+COPY pyproject.toml hatch_build.py package.json README.md LICENSE ./
 COPY cadquery_web_viewer ./cadquery_web_viewer
 COPY --from=frontend /src/cadquery_web_viewer/frontend ./cadquery_web_viewer/frontend
 

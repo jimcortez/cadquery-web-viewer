@@ -38,22 +38,20 @@ class CustomBuildHook(BuildHookInterface):
 
         self.app.display_info("Building frontend...")
 
-        # Build frontend using npx yarn (available via npm)
+        # Yarn 4 (Berry) via Corepack; the version is pinned in package.json#packageManager.
         try:
-            # Install dependencies
             self.app.display_info("Installing frontend dependencies...")
             subprocess.run(
-                ["npx", "yarn", "install", "--frozen-lockfile"],
+                ["corepack", "yarn", "install", "--immutable"],
                 cwd=str(project_root),
                 check=True,
             )
 
-            # Build frontend
             self.app.display_info("Building frontend with Vite...")
             env = os.environ.copy()
             env["CADQUERY_WEB_VIEWER_SMALL_BUILD"] = "true"
             subprocess.run(
-                ["npx", "-y", "yarn", "build", "--outDir", str(frontend_dir)],
+                ["corepack", "yarn", "build", "--outDir", str(frontend_dir)],
                 cwd=str(project_root),
                 check=True,
                 env=env,
@@ -69,7 +67,8 @@ class CustomBuildHook(BuildHookInterface):
             raise
         except FileNotFoundError:
             self.app.display_error(
-                "npx not found. Please install Node.js and npm to build the frontend."
+                "corepack not found. Please install Node.js (>=16.10) so Corepack "
+                "can supply the pinned Yarn version."
             )
             raise
 

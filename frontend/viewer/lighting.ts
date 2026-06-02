@@ -1,14 +1,10 @@
 import { ModelViewerElement } from "@google/model-viewer";
 import { $scene } from "@google/model-viewer/lib/model-viewer-base";
-import { settings } from "../misc/settings.ts";
-
 export let currentSceneRotation = 0; // radians, 0 is the default rotation
 
 export async function setupLighting(modelViewer: ModelViewerElement) {
   const scene = modelViewer[$scene];
-  if (scene) {
-    scene.environmentIntensity = (await settings).environmentIntensity;
-  }
+  void scene; // environment intensity is driven by useViewerSceneSettings
   // Code is mostly copied from the example at: https://modelviewer.dev/examples/stagingandcameras/#turnSkybox
   let lastX: number;
   let panning = false;
