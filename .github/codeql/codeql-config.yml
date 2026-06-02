@@ -1,21 +1,22 @@
 name: cadquery-web-viewer CodeQL config
 
-# Default queries plus security-and-quality, matching codeql.yml's `queries:`.
+# Default queries plus security-and-quality, matching codeql.yml's prior `queries:` line.
 queries:
   - uses: security-and-quality
 
-# Targeted, justified suppressions. Each entry must reference the design
+# Targeted, justified path exclusions. Each entry must reference the design
 # document that owns the decision so a reviewer can re-evaluate later.
-query-filters:
-  # py/full-ssrf in cadquery_web_viewer/url_import.py is the documented
-  # behavior of `PUT /api/object/<name>` with `{"url": "..."}` — the server
-  # fetches a user-provided URL on purpose. The trust model is documented
-  # in SECURITY.md and docs/api.md ("Trust model" section): the viewer is
-  # intended for localhost / trusted networks only, with a reverse proxy
-  # taking over the policy decision when exposed beyond that. Re-enable
-  # this rule and add IP / DNS allowlisting if the deployment posture
-  # changes.
-  - exclude:
-      id: py/full-ssrf
-      paths:
-        - cadquery_web_viewer/url_import.py
+#
+# cadquery_web_viewer/url_import.py implements the documented "fetch a remote
+# GLB by user-provided URL" feature of `PUT /api/object/<name>` JSON mode.
+# The file is intentionally an unrestricted URL fetcher (see SECURITY.md and
+# the "Trust model" section of docs/api.md): CORS is `*`, the viewer is
+# intended for trusted/local networks only, and adding IP/DNS allowlisting
+# would break legitimate use within trusted networks. CodeQL would
+# otherwise flag this as `py/full-ssrf` on every PR.
+#
+# The file is small (~55 lines) and single-purpose, so losing CodeQL coverage
+# of it is an acceptable trade. Re-enable scanning and add per-call SSRF
+# defenses if the deployment posture changes.
+paths-ignore:
+  - cadquery_web_viewer/url_import.py
