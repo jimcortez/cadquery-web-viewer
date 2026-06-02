@@ -42,7 +42,19 @@ jobs:
         # packageManager pin via the runner's pre-installed Yarn 1.
         run: corepack enable
       - name: Bump package.json version (single source of truth)
-        run: yarn version "$CLEAN_VERSION"
+        # Avoid `yarn version <ver>` because Yarn 4's plugin-version defaults
+        # to deferred mode (writes to .yarn/versions/, not package.json), which
+        # leaves nothing for the subsequent `git commit -am` to commit.
+        # Update package.json directly with Node — no Yarn semantics involved.
+        run: |
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            p.version = process.env.CLEAN_VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          echo "package.json after bump:"
+          grep '"version"' package.json
       - if: steps.check_recursive.outputs.skip != 'true'
         run: |
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
