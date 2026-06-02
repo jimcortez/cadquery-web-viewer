@@ -32,14 +32,17 @@ The [Dockerfile](../Dockerfile) in this repository builds an image with the **co
 
 ### Pull a published image (recommended)
 
-Tagged releases publish multi-arch (`linux/amd64`, `linux/arm64`) images to **GitHub Container Registry**:
+Tagged releases publish `linux/amd64` images to **GitHub Container Registry**:
 
 ```bash
 docker pull ghcr.io/jimcortez/cadquery-web-viewer:latest
 docker run --rm -p 32323:32323 ghcr.io/jimcortez/cadquery-web-viewer:latest
 ```
 
-`cadquery-ocp` ships `manylinux_2_31_aarch64` wheels, so both Apple Silicon (`linux/arm64`) and x86_64 (`linux/amd64`) hosts can run the published image without `--platform`.
+> **Apple Silicon / arm64 hosts:** the image is `linux/amd64` only because `cadquery-ocp` 7.8.x (pinned via `build123d>=0.10,<0.11`) ships **no** `manylinux_aarch64` wheel. Pass `--platform linux/amd64` when running on an arm64 host so Docker uses Rosetta/QEMU emulation:
+> ```bash
+> docker run --rm --platform linux/amd64 -p 32323:32323 ghcr.io/jimcortez/cadquery-web-viewer:latest
+> ```
 
 ### Build locally
 
@@ -47,6 +50,8 @@ docker run --rm -p 32323:32323 ghcr.io/jimcortez/cadquery-web-viewer:latest
 docker build -t cadquery-web-viewer:local .
 docker run --rm -p 32323:32323 cadquery-web-viewer:local
 ```
+
+(On arm64 hosts, add `--platform linux/amd64` to both commands.)
 
 Open `http://localhost:32323` in a browser. From Python on the host, use `server_type="remote"` and `remote_options` with the same host and port you published (see [Usage](usage.md#remote-server-flask-already-running)).
 

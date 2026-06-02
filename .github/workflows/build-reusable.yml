@@ -74,7 +74,10 @@ jobs:
         with:
           context: .
           push: false
-          platforms: linux/amd64,linux/arm64
+          # amd64 only: cadquery-ocp 7.8.x (pinned via build123d>=0.10,<0.11)
+          # ships no manylinux_aarch64 wheel. Re-add linux/arm64 when build123d
+          # adopts cadquery-ocp 7.9.3.1+ which publishes aarch64 wheels.
+          platforms: linux/amd64
           tags: cadquery-web-viewer:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max

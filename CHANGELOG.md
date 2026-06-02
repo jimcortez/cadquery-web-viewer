@@ -20,8 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `glb_cache`, the object/scene Flask routes, and the SSE event stream.
 - `engine.scene_active_names()` public accessor; `object_store.UNSET` public
   sentinel.
-- Multi-arch Docker images (`linux/amd64,linux/arm64`) and a GHCR publish job in
-  the release workflow.
+- GHCR publish job in the release workflow (image: `ghcr.io/jimcortez/
+  cadquery-web-viewer`). Image is `linux/amd64` only — `cadquery-ocp` 7.8.x
+  (transitively pinned via `build123d>=0.10,<0.11`) has no
+  `manylinux_aarch64` wheel; arm64 hosts need `--platform linux/amd64`.
 
 ### Changed
 - All GitHub Actions are now pinned to commit SHAs (with the human tag in a
