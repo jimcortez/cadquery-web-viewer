@@ -52,7 +52,7 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
       - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv sync --frozen
       - run: export CADQUERY_WEB_VIEWER_SKIP_FRONTEND_BUILD=true && uv build
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -103,7 +103,7 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           token: ${{ github.token }}
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Sync dependencies
