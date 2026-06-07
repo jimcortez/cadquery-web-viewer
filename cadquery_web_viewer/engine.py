@@ -658,6 +658,17 @@ def _show_payloads_from_inputs(
     return payloads, resolved
 
 
+_default_engine: CadQueryWebViewer | None = None
+
+
+def get_default_engine() -> CadQueryWebViewer:
+    """Return the process-wide default engine (shared with :data:`cadquery_web_viewer.viewer`)."""
+    global _default_engine
+    if _default_engine is None:
+        _default_engine = CadQueryWebViewer()
+    return _default_engine
+
+
 def glb_bytes_list_from_show_inputs(
     *objs: Any,
     names: str | list[str] | None = None,
@@ -671,7 +682,7 @@ def glb_bytes_list_from_show_inputs(
     """
     kw = dict(kwargs)
     payloads, resolved = _show_payloads_from_inputs(*objs, names=names, kwargs=kw)
-    defaults = CadQueryWebViewer()
+    defaults = get_default_engine()
     glbs = [_glb_bytes_from_show_payload(defaults, p) for p in payloads]
     return glbs, resolved
 
@@ -688,7 +699,7 @@ def prepare_glb_upload_batch(
     """
     kw = dict(kwargs)
     payloads_in, resolved = _show_payloads_from_inputs(*objs, names=names, kwargs=kw)
-    defaults = CadQueryWebViewer()
+    defaults = get_default_engine()
     payloads = [
         (
             p.name,

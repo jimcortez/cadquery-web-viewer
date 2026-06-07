@@ -6,12 +6,17 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from cadquery_web_viewer.cad import grab_all_cad, image_to_gltf
-from cadquery_web_viewer.engine import CadQueryWebViewer, CadQueryWebViewerProtocol, glb_bytes_list_from_show_inputs
+from cadquery_web_viewer.engine import (
+    CadQueryWebViewer,
+    CadQueryWebViewerProtocol,
+    get_default_engine,
+    glb_bytes_list_from_show_inputs,
+)
 from cadquery_web_viewer.options_types import RemoteOptions, ServerOptions
 
 ServerType = Literal["in-process", "remote", "local"]
 
-viewer = CadQueryWebViewer()
+viewer = get_default_engine()
 """Default engine used by :func:`show`, :func:`export_all`, and related helpers."""
 
 export_all = viewer.export_all
@@ -160,6 +165,7 @@ def clear(
 __all__ = [
     "CadQueryWebViewer",
     "CadQueryWebViewerProtocol",
+    "get_default_engine",
     "RemoteOptions",
     "ServerOptions",
     "ServerType",
