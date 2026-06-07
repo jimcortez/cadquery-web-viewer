@@ -1,0 +1,13 @@
+services:
+  cadquery-web-viewer:
+    build: .
+    image: cadquery-web-viewer:local
+    ports:
+      - "${CADQUERY_WEB_VIEWER_PORT:-32323}:${CADQUERY_WEB_VIEWER_PORT:-32323}"
+    environment:
+      CADQUERY_WEB_VIEWER_HOST: 0.0.0.0
+      CADQUERY_WEB_VIEWER_PORT: ${CADQUERY_WEB_VIEWER_PORT:-32323}
+      CADQUERY_WEB_VIEWER_CACHE_MODE: disk
+      CADQUERY_WEB_VIEWER_CACHE_DIR: /cache
+    volumes:
+      - ./cadquery-web-viewer-cache:/cache
