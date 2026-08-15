@@ -21,9 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `engine.scene_active_names()` public accessor; `object_store.UNSET` public
   sentinel.
 - GHCR publish job in the release workflow (image: `ghcr.io/jimcortez/
-  cadquery-web-viewer`). Image is `linux/amd64` only — `cadquery-ocp` 7.8.x
-  (transitively pinned via `build123d>=0.10,<0.11`) has no
-  `manylinux_aarch64` wheel; arm64 hosts need `--platform linux/amd64`.
+  cadquery-web-viewer`). `linux/arm64` now builds natively (see the `build123d`
+  0.11 upgrade below); the image is still published `linux/amd64` only, so
+  multi-arch publishing is a follow-up rather than an upstream limitation.
 
 ### Changed
 - All GitHub Actions are now pinned to commit SHAs (with the human tag in a
@@ -32,10 +32,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   build hook reads it and injects the version into wheel metadata.
 - Yarn 1 → Yarn 4 (Berry) via Corepack with the `node-modules` linker. `yarn
   install --frozen-lockfile` is replaced by `yarn install --immutable`.
-- Python support remains `>=3.10,<3.13`. Adding 3.13 was attempted in this
-  release but blocked by `vtk==9.3.1` (transitively pinned through `build123d`
-  → `cadquery-ocp` 7.8.x), which has no `cp313` wheels. Re-add when `build123d`
-  adopts `cadquery-ocp` 7.9.3.1+ which depends on `vtk==9.6.x`.
+- `build123d` upgraded from `>=0.10,<0.11` to `>=0.11,<0.12`. 0.11 swaps
+  `cadquery-ocp` 7.8.x for `cadquery-ocp-novtk` 7.9.x, which drops the `vtk`
+  dependency entirely and ships `manylinux_2_31_aarch64` wheels. This fixes
+  `pip install` / `docker build` failing on arm64 hosts (Apple Silicon), where
+  `cadquery-ocp` 7.8.x had no aarch64 wheel and resolution was unsatisfiable.
+  `vtk` and `matplotlib` are no longer in the dependency tree.
+- `cad.get_color()` now reads `build123d` `Color` via `tuple(color)`; 0.11
+  removed `Color.to_tuple()`.
+- Python support remains `>=3.10,<3.13`, but no longer because of an upstream
+  blocker: the `vtk==9.3.1` cp313 wheel gap is gone, so widening the range is
+  now just a matter of adding 3.13 to the CI matrix and testing it.
 - `package.json` `author` corrected to **Jim Cortez** (Yeicor remains credited
   in *Special thanks* and the LICENSE).
 - Pyright reporting tightened: argument/return/assignment/optional-access checks

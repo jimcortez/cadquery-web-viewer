@@ -182,8 +182,8 @@ jobs:
         with:
           context: .
           push: true
-          # amd64 only — see build-reusable.yml: cadquery-ocp 7.8.x has no
-          # manylinux_aarch64 wheel.
+          # amd64 only — see build-reusable.yml: a build-time choice now, not
+          # a wheel limitation (cadquery-ocp-novtk 7.9.x ships aarch64 wheels).
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -217,8 +217,8 @@ jobs:
         with:
           context: .
           push: true
-          # amd64 only — see build-reusable.yml: cadquery-ocp 7.8.x has no
-          # manylinux_aarch64 wheel.
+          # amd64 only — see build-reusable.yml: a build-time choice now, not
+          # a wheel limitation (cadquery-ocp-novtk 7.9.x ships aarch64 wheels).
           platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -1,6 +1,6 @@
 # Develop the UI and Python backend
 
-Target stack: **Python 3.10–3.12** (see [`pyproject.toml`](../pyproject.toml); Python 3.13 is blocked by `vtk==9.3.1` pinned via `build123d`/`cadquery-ocp`) and **Node.js LTS** for the Vite frontend. Yarn is supplied via [Corepack](https://nodejs.org/api/corepack.html); the version is pinned in `package.json#packageManager` (currently Yarn 4 / Berry).
+Target stack: **Python 3.10–3.12** (see [`pyproject.toml`](../pyproject.toml); the `vtk==9.3.1` pin that blocked 3.13 was removed by the `build123d>=0.11` / `cadquery-ocp-novtk` upgrade, so 3.13+ is untested rather than blocked) and **Node.js LTS** for the Vite frontend. Yarn is supplied via [Corepack](https://nodejs.org/api/corepack.html); the version is pinned in `package.json#packageManager` (currently Yarn 4 / Berry).
 
 ## 1. Install dependencies
 

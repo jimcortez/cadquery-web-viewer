@@ -6,13 +6,13 @@ Same geometry as the in-process example, but models are uploaded to a **separate
 
 1. From the repository root, install dependencies (`uv sync` or `pip install -r examples/requirements.txt`).
 
-2. **If you use Docker:** build the viewer image (from the repo root; `linux/amd64` matches published `cadquery-ocp` wheels). **If you use the CLI server only**, skip this step once `cadquery-web-viewer` is on your `PATH`.
+2. **If you use Docker:** build the viewer image from the repo root. **If you use the CLI server only**, skip this step once `cadquery-web-viewer` is on your `PATH`.
 
    ```bash
-   docker build --platform linux/amd64 -t cadquery-web-viewer:test .
+   docker build -t cadquery-web-viewer:test .
    ```
 
-   The printed `docker run` command also uses `--platform linux/amd64` so Apple Silicon hosts pull the same architecture as the build.
+   The build is native to your host architecture, arm64 included — no `--platform` flag is needed.
 
 3. Run this script; it will print a **`docker run`** line and a **`cadquery-web-viewer`** line—use whichever you prefer—in **another** terminal:
 

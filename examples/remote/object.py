@@ -20,7 +20,7 @@ CONTAINER_PORT = 32323
 
 def _docker_server_command() -> str:
     return (
-        "docker run --rm --platform linux/amd64 "
+        "docker run --rm "
         f"-p {REMOTE_PORT}:{CONTAINER_PORT} "
         "-e CADQUERY_WEB_VIEWER_HOST=0.0.0.0 "
         f"{DOCKER_IMAGE}"
@@ -40,8 +40,7 @@ def _wait_for_user_to_start_server() -> None:
     print()
     print("In another terminal, start the viewer and API using either option below, then come back here.")
     print()
-    print("Docker (from the repo root, after `docker build --platform linux/amd64 -t "
-        f"{DOCKER_IMAGE} .`):")
+    print(f"Docker (from the repo root, after `docker build -t {DOCKER_IMAGE} .`):")
     print(f"  {docker_cmd}")
     print()
     print("Command line (with cadquery-web-viewer on your PATH, e.g. after `uv sync` or `pip install`):")

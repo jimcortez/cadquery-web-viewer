@@ -34,7 +34,9 @@ def get_color(obj: Any) -> ColorTuple | None:
         clamped = tuple(min(max(float(x), 0), 1) for x in c)
         return (clamped[0], clamped[1], clamped[2], clamped[3])
     if isinstance(obj, Color):
-        return obj.to_tuple()
+        # build123d 0.11 dropped Color.to_tuple(); Color is iterable as RGBA instead.
+        r, g, b, a = tuple(obj)
+        return (r, g, b, a)
     return None
 
 
