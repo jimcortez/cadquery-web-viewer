@@ -1,0 +1,16 @@
+{
+  "mode": "link",
+  "followGroups": [],
+  "pinnedSkills": [
+    "official/anthropic/skills/frontend-design",
+    "official/anthropic/skills/web-artifacts-builder",
+    "registry/@obra/brainstorming/brainstorming",
+    "registry/@obra/dispatching-parallel-agents/dispatching-parallel-agents",
+    "registry/@obra/executing-plans/executing-plans",
+    "registry/@obra/subagent-driven-development/subagent-driven-development",
+    "registry/@obra/systematic-debugging/systematic-debugging",
+    "registry/@obra/using-superpowers/using-superpowers",
+    "registry/@obra/verification-before-completion/verification-before-completion"
+  ],
+  "deployedAt": "2026-08-15T23:25:10.018Z"
+}

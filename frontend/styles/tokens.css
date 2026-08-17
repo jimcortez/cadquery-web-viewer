@@ -1,0 +1,80 @@
+/*
+ * Design tokens for the viewer chrome.
+ *
+ * Single source of spacing, radii, type scale and control geometry. Panels and
+ * controls reference these rather than hardcoding px, so density can be tuned in
+ * one place. Colour comes from the Vuetify theme (see theme.ts) and is exposed
+ * here only where a raw value is needed.
+ */
+
+:root {
+  --cq-space-1: 4px;
+  --cq-space-2: 8px;
+  --cq-space-3: 12px;
+  --cq-space-4: 16px;
+  --cq-space-5: 24px;
+
+  --cq-radius-sm: 4px;
+  --cq-radius-md: 6px;
+  --cq-radius-lg: 10px;
+
+  /* Section headers: small, uppercase, tracked. */
+  --cq-text-section: 0.6875rem;
+  --cq-text-label: 0.75rem;
+  --cq-text-body: 0.8125rem;
+
+  --cq-control-h: 28px;
+  --cq-row-h: 32px;
+  --cq-list-row-h: 34px;
+
+  /* Label column shared by every SettingRow, so controls line up across panels. */
+  --cq-label-w: 96px;
+  --cq-rail-w: 320px;
+  --cq-float-w: 300px;
+
+  --cq-border: 1px solid rgba(var(--v-border-color), 0.5);
+  --cq-shadow-float: 0 8px 28px rgba(0, 0, 0, 0.36);
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden !important;
+}
+
+body {
+  background: rgb(var(--v-theme-background));
+}
+
+/* Panels are dense by design; the stock Material line-height is too airy here. */
+.cq-panel {
+  font-size: var(--cq-text-body);
+}
+
+.cq-panel .v-slider .v-slider-track__container {
+  --v-slider-track-size: 3px;
+}
+
+.cq-panel .v-input--density-compact {
+  --v-input-control-height: var(--cq-control-h);
+}
+
+.cq-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--v-border-color), 0.6) transparent;
+}
+
+.cq-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cq-scroll::-webkit-scrollbar-thumb {
+  background: rgba(var(--v-border-color), 0.6);
+  border-radius: var(--cq-radius-sm);
+}
+
+.cq-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

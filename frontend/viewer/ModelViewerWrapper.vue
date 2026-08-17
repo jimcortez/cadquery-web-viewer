@@ -193,14 +193,25 @@ function onCameraChangeLine(lineId: number) {
   }
 }
 
-function onElemReady(callback: (elem: ModelViewerElement) => void) {
+/**
+ * Runs `callback` once the underlying <model-viewer> element exists.
+ *
+ * Returns a stop handle. Callers frequently invoke this from a watch callback,
+ * where there is no active effect scope, so the internal watcher cannot rely on
+ * automatic disposal: it stops itself after firing, and the handle lets a caller
+ * cancel before that.
+ */
+function onElemReady(callback: (elem: ModelViewerElement) => void): () => void {
   if (elem.value) {
     callback(elem.value);
-  } else {
-    watch(() => elem.value, (elem) => {
-      if (elem) callback(elem);
-    });
+    return () => {};
   }
+  const stop = watch(elem, (newElem) => {
+    if (!newElem) return;
+    stop();
+    callback(newElem);
+  });
+  return stop;
 }
 
 function entries(lines: { [id: number]: Line3DData }): [string, Line3DData][] {

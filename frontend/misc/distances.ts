@@ -1,5 +1,5 @@
 import { BufferAttribute, InterleavedBufferAttribute, Vector3 } from "three";
-import type { MObject3D } from "../tools/Selection.vue";
+import type { MObject3D } from "../tools/types";
 import type { ModelScene } from "@google/model-viewer/lib/three-components/ModelScene";
 import type { SelectionInfo } from "../tools/selection";
 

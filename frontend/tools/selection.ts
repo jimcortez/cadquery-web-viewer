@@ -1,9 +1,9 @@
 // Model management from the graphics side
 
-import type { MObject3D } from "./Selection.vue";
+import type { MObject3D } from "./types";
 import type { Intersection } from "three";
-import { Box3 } from "three";
-import { extrasNameKey } from "../misc/gltf";
+import { Box3 } from "three/src/math/Box3.js";
+import { getOwningModelTag, type TaggedObject3D } from "../misc/modelOwnership";
 
 /** Information about a single item in the selection */
 export class SelectionInfo {
@@ -21,12 +21,14 @@ export class SelectionInfo {
   }
 
   public getObjectName() {
-    return this.object.userData[extrasNameKey];
+    // Walks self -> geometry -> ancestors: the loader only tags geometry for some
+    // meshes, so reading userData directly misses those.
+    return getOwningModelTag(this.object as unknown as TaggedObject3D);
   }
 
   public matches(object: MObject3D) {
     return (
-      this.getObjectName() === object.userData[extrasNameKey] &&
+      this.getObjectName() === getOwningModelTag(object as unknown as TaggedObject3D) &&
       ((this.kind === "face" && (object.type === "Mesh" || object.type === "SkinnedMesh")) ||
         (this.kind === "edge" && (object.type === "Line" || object.type === "LineSegments")) ||
         (this.kind === "vertex" && object.type === "Points"))
