@@ -11,6 +11,9 @@
 /parcel-bundle-reports/
 glb-cache
 cadquery-web-viewer-cache
+.claude
+.yarn
+skillsmgr-deploy.json
 
 *.iml
 venv/
