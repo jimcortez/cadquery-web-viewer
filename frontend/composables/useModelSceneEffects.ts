@@ -16,6 +16,10 @@ import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
 import type { ModelDisplayState } from "./useModelDisplaySettings";
 import type { MObject3D } from "../tools/types";
 
+/** Matches useModelDisplaySettings' default; anything else is a user override. */
+const DEFAULT_BASE_COLOR = "#ffffff";
+const WHITE = new Color(0xffffff);
+
 export type ModelFeatureCounts = {
   faceCount: number;
   edgeCount: number;
@@ -344,6 +348,11 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
     if (!parts) return;
     const base = new Color(display.baseColor);
     const emissive = new Color(display.emissiveColor);
+    // Tessellated CAD meshes always carry per-vertex colours, so deferring to them
+    // whenever they exist meant the base colour never applied to anything. A
+    // non-default colour is an explicit override: switch the mesh to it and leave
+    // the model's own colours in charge otherwise.
+    const overrideBaseColor = display.baseColor.toLowerCase() !== DEFAULT_BASE_COLOR;
     parts.sceneModel.traverse((child) => {
       if (!isMine(child) || !child.material || kindOf(child) !== "face") return;
       if (!child.userData.materialCloned) {
@@ -351,8 +360,8 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
         child.userData.materialCloned = true;
       }
       const mat = child.material as MeshStandardMaterial;
-      if (meshHasVertexColors(child)) mat.vertexColors = true;
-      else mat.color.copy(base);
+      mat.vertexColors = meshHasVertexColors(child) && !overrideBaseColor;
+      mat.color.copy(overrideBaseColor ? base : WHITE);
       mat.metalness = display.metalness;
       mat.roughness = display.roughness;
       mat.emissive.copy(emissive);

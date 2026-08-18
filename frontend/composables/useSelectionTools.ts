@@ -1,6 +1,7 @@
 import {
   computed,
   inject,
+  markRaw,
   provide,
   ref,
   watch,
@@ -198,7 +199,10 @@ export function createSelectionToolsProvider(
 
   function select(selInfo: SelectionInfo) {
     if (!selected.value.some((m) => m.getKey() === selInfo.getKey())) {
-      selected.value.push(selInfo);
+      // markRaw, or Vue turns the whole three.js object graph hanging off this
+      // SelectionInfo into reactive proxies. Only the list identity needs to be
+      // reactive; nothing renders the three.js object itself.
+      selected.value.push(markRaw(selInfo));
     }
     highlight(selInfo);
   }
@@ -400,7 +404,7 @@ export function createSelectionToolsProvider(
   // --- viewer wiring --------------------------------------------------------
 
   let firstLoad = true;
-  let hasListeners = false;
+  let boundElem: ModelViewerElement | null = null;
   let cameraChangeWaiting = false;
   let cameraChangeLast = 0;
 
@@ -431,7 +435,7 @@ export function createSelectionToolsProvider(
         if (sel.matches(obj as unknown as MObject3D)) foundObject = obj as unknown as MObject3D;
       });
       if (foundObject) {
-        sel.object = foundObject;
+        sel.object = markRaw(foundObject);
         highlight(sel);
       } else {
         selected.value = selected.value.filter((m) => m.getKey() !== sel.getKey());
@@ -446,13 +450,26 @@ export function createSelectionToolsProvider(
   function bindViewer(current: InstanceType<typeof ModelViewerWrapper> | null) {
     if (!isViewerReady(current)) return;
     current.onElemReady((elem: ModelViewerElement) => {
-      if (hasListeners) return;
-      hasListeners = true;
+      // Keyed on the element, not a one-shot flag: emptying and refilling the
+      // scene remounts the wrapper, and a flag left picking wired to the
+      // discarded element — clicks then did nothing at all.
+      if (boundElem === elem) return;
+      unbindElem();
+      boundElem = elem;
       elem.addEventListener("mousedown", mouseDownListener);
       elem.addEventListener("mouseup", mouseUpListener);
       elem.addEventListener("before-render", onBeforeRender);
       elem.addEventListener("camera-change", onCameraChange);
     });
+  }
+
+  function unbindElem() {
+    if (!boundElem) return;
+    boundElem.removeEventListener("mousedown", mouseDownListener);
+    boundElem.removeEventListener("mouseup", mouseUpListener);
+    boundElem.removeEventListener("before-render", onBeforeRender);
+    boundElem.removeEventListener("camera-change", onCameraChange);
+    boundElem = null;
   }
 
   watch(viewer, bindViewer, { immediate: true });

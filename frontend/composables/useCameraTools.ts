@@ -1,6 +1,10 @@
 import { inject, onScopeDispose, provide, ref, type InjectionKey, type Ref } from "vue";
 import type { PerspectiveCamera } from "three/src/cameras/PerspectiveCamera.js";
 import { OrthographicCamera } from "three/src/cameras/OrthographicCamera.js";
+import { Box3 } from "three/src/math/Box3.js";
+import { Matrix4 } from "three/src/math/Matrix4.js";
+import { Vector3 } from "three/src/math/Vector3.js";
+import { isSceneHelperObject, type TaggedObject3D } from "../misc/modelOwnership";
 import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
 import type { ViewerSceneSettingsContext } from "./useViewerSceneSettings";
 
@@ -26,8 +30,12 @@ type SceneWithCameras = {
   __perspectiveCamera?: PerspectiveCamera;
   aspect: number;
   getTarget: () => { clone: () => { add: (v: unknown) => unknown } };
-  target: { position: unknown };
   setTarget: (x: number, y: number, z: number) => void;
+  /** Model-space bounds of everything loaded, which model-viewer keeps current. */
+  boundingBox: Box3;
+  target: { position: unknown; matrixWorld: Matrix4 };
+  _model?: object;
+  jumpToGoal: () => void;
   queueRender: () => void;
 };
 
@@ -100,10 +108,48 @@ export function createCameraToolsProvider(
     viewer.value?.elem?.dispatchEvent(new CustomEvent("camera-change", { detail: { source: "none" } }));
   }
 
+  /**
+   * Bounds of the real geometry, in the model coordinates `setTarget` expects.
+   *
+   * Deliberately not `scene.boundingBox`: that includes the helpers, and the axes
+   * helper is drawn at the world origin however far away the part sits. Framing it
+   * centres the camera on the empty space between the origin and the model.
+   */
+  function modelBounds(scene: SceneWithCameras): Box3 {
+    const box = new Box3();
+    const root = scene._model as
+      | (TaggedObject3D & { traverse: (cb: (o: TaggedObject3D) => void) => void })
+      | undefined;
+    if (!root) return box;
+    const toModelSpace = new Matrix4().copy(scene.target.matrixWorld).invert();
+    root.traverse((child) => {
+      const obj = child as TaggedObject3D & { geometry?: unknown; userData?: Record<string, unknown> };
+      if (!obj.geometry || isSceneHelperObject(obj)) return;
+      // The back-face clones sit exactly on their originals, so they add nothing
+      // but cost.
+      if (obj.userData?.noHit) return;
+      box.union(new Box3().setFromObject(child as never).applyMatrix4(toModelSpace));
+    });
+    return box;
+  }
+
   function centerCamera() {
-    // Routed through the settings object rather than scene.setTarget directly, so
-    // this and useViewerSceneSettings' sync cannot disagree about the target.
-    viewerScene.scene.cameraTarget = { x: 0, y: 0, z: 0 };
+    const scene = sceneOf();
+    const center = new Vector3();
+    if (scene) {
+      const bounds = modelBounds(scene);
+      if (!bounds.isEmpty()) bounds.getCenter(center);
+      else if (!scene.boundingBox.isEmpty()) scene.boundingBox.getCenter(center);
+    }
+    // Mirrored into the settings object so the Target readout matches the camera,
+    // and applied directly because an unchanged value would not re-fire the watch
+    // even though panning has since moved the live target.
+    viewerScene.scene.cameraTarget = { x: center.x, y: center.y, z: center.z };
+    if (scene) {
+      scene.setTarget(center.x, center.y, center.z);
+      scene.jumpToGoal();
+      scene.queueRender();
+    }
     viewer.value?.elem?.zoom(-1000000);
   }
 

@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { computed, defineAsyncComponent, provide, ref, shallowRef, type Ref } from "vue";
+import { computed, defineAsyncComponent, provide, ref, shallowRef, type ShallowRef } from "vue";
 import { VTooltip } from "vuetify/lib/components/index.mjs";
 import { Document } from "@gltf-transform/core";
 import SvgIcon from "@jamescoyle/vue-icon";
@@ -33,7 +33,9 @@ const ModelViewerWrapper = defineAsyncComponent({
 const railOpen = ref(window.innerWidth > 900);
 
 const sceneUrl = ref("");
-const viewer: Ref<InstanceType<typeof ModelViewerWrapperT> | null> = ref(null);
+// Shallow: the wrapper exposes three.js objects, and a deep ref would proxy that
+// whole graph on every access from the picking and camera paths.
+const viewer: ShallowRef<InstanceType<typeof ModelViewerWrapperT> | null> = shallowRef(null);
 const sceneDocument = shallowRef(new Document());
 provide(sceneDocumentKey, { sceneDocument });
 
