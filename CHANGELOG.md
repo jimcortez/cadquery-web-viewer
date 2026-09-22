@@ -58,6 +58,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hardcoded `--platform linux/amd64` requirement from `docs/install.md` for
   hosts where ARM64 wheels of `cadquery-ocp` are available.
 
+### Fixed
+- Back-face meshes are now parented to their source mesh's node instead of the
+  scene root. GLBs with a transformed parent node (for example the Y-up root
+  that OCC's glTF writer emits for assemblies) no longer render a second grey
+  copy of the model rotated 90 degrees.
+
 ## [2.0.0]
 
 Major release: the HTTP API is redesigned around **versioned object storage**
