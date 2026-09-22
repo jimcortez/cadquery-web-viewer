@@ -423,7 +423,11 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
 
     deriveEnabledFeatures();
 
-    const childrenToAdd: MObject3D[] = [];
+    // Back-face clones must sit beside their source mesh: a clone only carries the
+    // local transform, so adding it to the scene root drops any parent node
+    // rotation (e.g. the Y-up root that OCC's glTF writer emits) and draws a
+    // second copy of the model 90 degrees off.
+    const childrenToAdd: [MObject3D, MObject3D][] = [];
     sceneModel.traverse((child) => {
       child.updateMatrixWorld();
       if (!isMine(child) || kindOf(child) !== "face") return;
@@ -438,10 +442,10 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
         backChild.material.color = new Color(0.25, 0.25, 0.25);
         backChild.userData.noHit = true;
         child.userData.backChild = backChild;
-        childrenToAdd.push(backChild);
+        childrenToAdd.push([child, backChild]);
       }
     });
-    childrenToAdd.forEach((child) => sceneModel.add(child));
+    childrenToAdd.forEach(([source, back]) => (source.parent ?? sceneModel).add(back));
 
     applyVisibility();
     applyOpacity(display.opacity);
