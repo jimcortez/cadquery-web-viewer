@@ -133,12 +133,14 @@ export function createViewerSceneSettingsProvider(): ViewerSceneSettingsContext 
     (elem as unknown as { toneMapping: ToneMappingValue }).toneMapping = scene.toneMapping;
     elem.autoRotate = scene.autoRotate;
     elem.autoRotateDelay = scene.autoRotateDelay;
+    // model-viewer has no background-color feature: its canvas is transparent and
+    // whatever CSS paints behind it shows through. Setting it on the element is
+    // what actually makes the colour (and any shadow cast onto it) visible.
+    elem.style.backgroundColor = scene.backgroundColor;
     const envUrl = environmentImageFromPreset(scene.environmentPreset);
     elem.environmentImage = envUrl || null;
     if (modelScene) {
       modelScene.environmentIntensity = scene.environmentIntensity;
-      modelScene.setTarget(scene.cameraTarget.x, scene.cameraTarget.y, scene.cameraTarget.z);
-      applyAxisVisibility(modelScene);
     }
   }
 
@@ -155,6 +157,19 @@ export function createViewerSceneSettingsProvider(): ViewerSceneSettingsContext 
       watch(
         () => scene.axisEnabledFeatures.slice().sort().join(","),
         () => applyAxisVisibility(getModelScene()),
+      );
+      // Only when the target itself changes, and never on bind: re-targeting from
+      // the deep watcher above moved the camera every time an unrelated setting (a
+      // colour, the exposure) changed, which read as the view jumping out. Left
+      // alone, model-viewer keeps its own default target — the model's centre.
+      watch(
+        () => [scene.cameraTarget.x, scene.cameraTarget.y, scene.cameraTarget.z],
+        ([x, y, z]) => {
+          const modelScene = getModelScene();
+          if (!modelScene || x === undefined || y === undefined || z === undefined) return;
+          modelScene.setTarget(x, y, z);
+          modelScene.queueRender();
+        },
       );
     });
   }

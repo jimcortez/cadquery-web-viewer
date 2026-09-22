@@ -1,6 +1,6 @@
 <script lang="ts" setup>
 import {settings} from "../misc/settings";
-import { computed, inject, nextTick, onUpdated, type Ref, ref, watch } from "vue";
+import { computed, inject, nextTick, onUpdated, type Ref, ref, shallowRef, watch } from "vue";
 import { disableTapKey } from "../injectionKeys";
 import { useViewerSceneSettings } from "../composables/useViewerSceneSettings";
 import {$renderer, $scene} from "@google/model-viewer/lib/model-viewer-base";
@@ -25,10 +25,14 @@ Mesh.prototype.raycast = acceleratedRaycast;
 
 const props = defineProps<{ src: string }>();
 
-const elem = ref<ModelViewerElement | null>(null);
-const scene = ref<ModelScene | null>(null);
-const renderer = ref<Renderer | null>(null);
-const controls = ref<SmoothControls | null>(null);
+// Shallow on purpose: these hold three.js/DOM objects whose whole graph a deep
+// `ref` would wrap in reactive proxies. Every matrix write and traversal in the
+// render and picking paths would then run through a proxy trap, which turned a
+// single feature pick into a ~100ms stall.
+const elem = shallowRef<ModelViewerElement | null>(null);
+const scene = shallowRef<ModelScene | null>(null);
+const renderer = shallowRef<Renderer | null>(null);
+const controls = shallowRef<SmoothControls | null>(null);
 
 const sett = ref<any | null>(null);
 (async () => sett.value = await settings)();
@@ -39,6 +43,20 @@ const modelViewerEnvAttrs = computed(() => {
   const s = sett.value;
   if (!s?.skybox) return {};
   return { "skybox-image": s.skybox };
+});
+
+/**
+ * Boolean model-viewer attributes, present-or-absent.
+ *
+ * `:auto-rotate="false"` does NOT turn the feature off: Vue writes the string
+ * "false", and model-viewer (lit) reads any present attribute as true. Toggling
+ * auto-rotate off left it spinning after the delay. `ar` had the same defect.
+ */
+const modelViewerFlagAttrs = computed(() => {
+  const flags: Record<string, string> = {};
+  if (viewerScene.scene.autoRotate) flags["auto-rotate"] = "";
+  if (sett.value?.arModes?.length) flags["ar"] = "";
+  return flags;
 });
 
 let initialized = false
@@ -193,14 +211,25 @@ function onCameraChangeLine(lineId: number) {
   }
 }
 
-function onElemReady(callback: (elem: ModelViewerElement) => void) {
+/**
+ * Runs `callback` once the underlying <model-viewer> element exists.
+ *
+ * Returns a stop handle. Callers frequently invoke this from a watch callback,
+ * where there is no active effect scope, so the internal watcher cannot rely on
+ * automatic disposal: it stops itself after firing, and the handle lets a caller
+ * cancel before that.
+ */
+function onElemReady(callback: (elem: ModelViewerElement) => void): () => void {
   if (elem.value) {
     callback(elem.value);
-  } else {
-    watch(() => elem.value, (elem) => {
-      if (elem) callback(elem);
-    });
+    return () => {};
   }
+  const stop = watch(elem, (newElem) => {
+    if (!newElem) return;
+    stop();
+    callback(newElem);
+  });
+  return stop;
 }
 
 function entries(lines: { [id: number]: Line3DData }): [string, Line3DData][] {
@@ -218,19 +247,18 @@ watch(disableTap, (newDisableTap) => {
 <template>
   <!-- The main 3D model viewer -->
   <div class="viewer-host">
-  <model-viewer ref="elem" v-if="sett != null" :ar="sett.arModes.length > 0" :ar-modes="sett.arModes"
-                v-bind="modelViewerEnvAttrs"
+  <model-viewer ref="elem" v-if="sett != null" :ar-modes="sett.arModes"
+                v-bind="{ ...modelViewerEnvAttrs, ...modelViewerFlagAttrs }"
                 :exposure="viewerScene.scene.exposure" :autoplay="sett.autoplay"
                 :orbit-sensitivity="sett.orbitSensitivity" :pan-sensitivity="sett.panSensitivity"
                 :poster="poster || undefined" :shadow-intensity="viewerScene.scene.shadowIntensity"
                 :shadow-softness="viewerScene.scene.shadowSoftness"
                 :tone-mapping="viewerScene.scene.toneMapping"
-                :auto-rotate="viewerScene.scene.autoRotate"
                 :auto-rotate-delay="viewerScene.scene.autoRotateDelay"
-                :background-color="viewerScene.scene.backgroundColor"
                 :src="props.src" :zoom-sensitivity="sett.zoomSensitivity" alt="The 3D model(s)" camera-controls
                 camera-orbit="45deg 45deg auto" interaction-prompt="none" max-camera-orbit="Infinity 180deg auto"
-                min-camera-orbit="-Infinity 0deg 5%" reveal="auto" style="width: 100%; height: 100%">
+                min-camera-orbit="-Infinity 0deg 5%" reveal="auto"
+                :style="{ width: '100%', height: '100%', backgroundColor: viewerScene.scene.backgroundColor }">
     <slot></slot>
     <!-- Add a progress bar to the top of the model viewer -->
     <div ref="progressBar" slot="progress-bar" class="progress-bar">

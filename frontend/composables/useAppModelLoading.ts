@@ -8,14 +8,15 @@ import { isViewerReady } from "../viewer/viewerUtils";
 import type ModelViewerWrapperT from "../viewer/ModelViewerWrapper.vue";
 import { useObjectPicker } from "./useObjectPicker";
 
-export type ToolsApi = {
+/** Just the slice of the selection tools this needs, to keep the dependency narrow. */
+export type SelectionApi = {
   removeObjectSelections: (name: string) => void;
 };
 
 export function useAppModelLoading(
   viewer: Ref<InstanceType<typeof ModelViewerWrapperT> | null>,
   sceneDocument: ShallowRef<Document>,
-  tools: Ref<ToolsApi | null>,
+  selection: SelectionApi,
   sceneUrl: Ref<string>,
 ) {
   const preloadingModels = ref<string[]>([]);
@@ -35,7 +36,7 @@ export function useAppModelLoading(
       const isLast = parseInt(modelIndex, 10) === event.models.length - 1;
       const model = event.models[modelIndex];
       if (!model) continue;
-      tools.value?.removeObjectSelections(model.name);
+      selection.removeObjectSelections(model.name);
       try {
         const loadHelpers = (await settings).loadHelpers;
         if (!model.isRemove) {

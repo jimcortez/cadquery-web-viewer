@@ -1,36 +1,49 @@
 <script lang="ts" setup>
-import {onMounted, ref, watch} from "vue";
+import {onMounted, onUnmounted, ref, watch} from "vue";
 import type {ModelScene} from "@google/model-viewer/lib/three-components/ModelScene";
 // @ts-expect-error
 import * as OrientationGizmoRaw from "three-orientation-gizmo/src/OrientationGizmo";
 import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
 import {currentSceneRotation} from "../viewer/lighting.ts";
+import {useCameraTools} from "../composables/useCameraTools";
 
 import * as THREE from "three";
 
 const props = defineProps<{ viewer: InstanceType<typeof ModelViewerWrapper> }>();
 
-function createGizmo(expectedParent: HTMLElement, scene: ModelScene): HTMLElement {
-  // three-orientation-gizmo expects a full THREE namespace on globalThis at construction time.
+const {trackingCamera} = useCameraTools();
+
+/**
+ * three-orientation-gizmo reads a full THREE namespace off globalThis — not only
+ * when constructed, but inside update() too. Scoping the global to each call keeps
+ * it out of the page's permanent namespace.
+ */
+function withTHREE<T>(fn: () => T): T {
   const globalWithTHREE = globalThis as unknown as { THREE?: typeof THREE };
   const prevTHREE = globalWithTHREE.THREE;
   globalWithTHREE.THREE = THREE;
-  let gizmo: ReturnType<typeof OrientationGizmoRaw.default>;
   try {
-    // noinspection SpellCheckingInspection
-    gizmo = new OrientationGizmoRaw.default(scene.camera, {
-    size: expectedParent.clientWidth,
-    bubbleSizePrimary: expectedParent.clientWidth / 12,
-    bubbleSizeSeconday: expectedParent.clientWidth / 12,
-    fontSize: (expectedParent.clientWidth / 10) + "px",
-    });
+    return fn();
   } finally {
-    if (prevTHREE === undefined) {
-      delete globalWithTHREE.THREE;
-    } else {
-      globalWithTHREE.THREE = prevTHREE;
-    }
+    if (prevTHREE === undefined) delete globalWithTHREE.THREE;
+    else globalWithTHREE.THREE = prevTHREE;
   }
+}
+
+function createGizmo(expectedParent: HTMLElement, scene: ModelScene): HTMLElement {
+  // Bind to the camera that actually receives control input. In orthographic
+  // mode scene.camera is replaced every frame, so a gizmo bound to it freezes
+  // the moment it is reinstalled.
+  // noinspection SpellCheckingInspection
+  const gizmo: ReturnType<typeof OrientationGizmoRaw.default> = withTHREE(
+    () =>
+      new OrientationGizmoRaw.default(trackingCamera() ?? scene.camera, {
+        size: expectedParent.clientWidth,
+        bubbleSizePrimary: expectedParent.clientWidth / 12,
+        bubbleSizeSeconday: expectedParent.clientWidth / 12,
+        fontSize: expectedParent.clientWidth / 10 + "px",
+      }),
+  );
   // Make sure all bubbles are labeled
   for (let bubble of gizmo.bubbles) {
     bubble.label = bubble.axis.toUpperCase();
@@ -75,17 +88,42 @@ let container = ref<HTMLElement | null>(null);
 
 let gizmo: HTMLElement & { update: () => void }
 
+let boundElem: HTMLElement | null = null;
+
+// The gizmo only redraws when told to, so pump it whenever the camera moves.
+function redraw() {
+  if (gizmo) withTHREE(() => gizmo.update());
+}
+
+function bindCameraUpdates() {
+  const elem = props.viewer.elem as unknown as HTMLElement | null | undefined;
+  if (!elem || elem === boundElem) return;
+  boundElem?.removeEventListener("camera-change", redraw);
+  boundElem = elem;
+  elem.addEventListener("camera-change", redraw);
+}
+
 let reinstall = () => {
   if (!container.value || !props.viewer.scene) return;
-  if (gizmo) container.value.removeChild(gizmo);
+  if (gizmo && gizmo.parentNode === container.value) container.value.removeChild(gizmo);
   gizmo = createGizmo(container.value, props.viewer.scene as ModelScene) as typeof gizmo;
   container.value.appendChild(gizmo);
+  bindCameraUpdates();
+  redraw();
 }
-// Defer gizmo install until the viewer scene is ready (avoids touching the camera too early).
+// Install once the container element exists. An `immediate` watch cannot do this:
+// it runs during setup, when the template ref is still null, so reinstall() bailed
+// and the gizmo was never added to the page.
+onMounted(reinstall);
+// Later scene swaps still need a rebuild.
 watch(() => props.viewer.scene, (scene) => {
   if (scene) reinstall();
-}, {immediate: true});
-// onUnmounted is not needed because the gizmo is removed when the container is removed
+});
+
+onUnmounted(() => {
+  boundElem?.removeEventListener("camera-change", redraw);
+  boundElem = null;
+});
 </script>
 
 <template>

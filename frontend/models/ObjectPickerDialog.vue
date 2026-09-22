@@ -1,17 +1,12 @@
 <script lang="ts" setup>
 import {
-  VBtn,
   VCard,
-  VCardText,
   VCheckboxBtn,
-  VSelect,
   VDialog,
-  VDivider,
   VProgressCircular,
-  VSpacer,
+  VSelect,
   VTextField,
-  VToolbar,
-  VToolbarTitle,
+  VTooltip,
 } from "vuetify/lib/components/index.mjs";
 import { computed, ref, watch } from "vue";
 import { mdiClose, mdiRefresh } from "@mdi/js";
@@ -67,50 +62,48 @@ const sampleMenuProps = {
 </script>
 
 <template>
-  <v-dialog v-model="open" max-width="520">
-    <v-card>
-      <v-toolbar density="compact" class="popup">
-        <v-toolbar-title>Add models</v-toolbar-title>
-        <v-spacer />
-        <v-btn
+  <v-dialog v-model="open" max-width="540">
+    <v-card class="cq-dialog cq-panel">
+      <header class="cq-dialog__head">
+        <span class="cq-dialog__title">Add objects</span>
+        <button
           v-if="apiBaseUrl"
-          icon
+          type="button"
+          class="cq-dialog__btn"
           :disabled="listLoading"
+          aria-label="Refresh list"
           @click="emit('refresh')"
         >
-          <svg-icon :path="mdiRefresh" type="mdi" />
-        </v-btn>
-        <v-btn icon @click="open = false">
-          <svg-icon :path="mdiClose" type="mdi" />
-        </v-btn>
-      </v-toolbar>
+          <v-tooltip activator="parent" location="bottom">Refresh</v-tooltip>
+          <svg-icon :path="mdiRefresh" type="mdi" size="17" />
+        </button>
+        <button type="button" class="cq-dialog__btn" aria-label="Close" @click="open = false">
+          <svg-icon :path="mdiClose" type="mdi" size="17" />
+        </button>
+      </header>
 
-      <v-card-text class="pa-4 dialog-body">
-        <h6 class="text-subtitle-2 mb-2">Server cache</h6>
-        <div v-if="!apiBaseUrl" class="text-body-2 text-medium-emphasis mb-4">
-          Backend not connected. Objects on the server will appear here when the viewer is served by
+      <div class="cq-dialog__body cq-scroll">
+        <h6 class="cq-dialog__section">Server cache</h6>
+        <p v-if="!apiBaseUrl" class="cq-dialog__note">
+          Backend not connected. Objects on the server appear here when the viewer is served by
           <code>cadquery-web-viewer</code>.
-        </div>
-        <div v-else-if="listLoading" class="d-flex justify-center my-4">
-          <v-progress-circular indeterminate size="32" />
-        </div>
-        <p v-else-if="listError" class="text-error text-body-2 mb-4">{{ listError }}</p>
-        <p v-else-if="objects.length === 0" class="text-body-2 text-medium-emphasis mb-4">
-          No objects in cache yet. Import a model below or publish from Python.
         </p>
-        <div v-else class="server-object-list mb-4">
-          <div
-            v-for="obj in objects"
-            :key="obj.name"
-            class="d-flex align-center ga-2 mb-2"
-          >
+        <div v-else-if="listLoading" class="cq-dialog__loading">
+          <v-progress-circular indeterminate size="28" />
+        </div>
+        <p v-else-if="listError" class="cq-dialog__error">{{ listError }}</p>
+        <p v-else-if="objects.length === 0" class="cq-dialog__note">
+          No objects in the cache yet. Import one below, or publish from Python.
+        </p>
+        <ul v-else class="cq-dialog__list cq-scroll">
+          <li v-for="obj in objects" :key="obj.name">
             <v-checkbox-btn
               :model-value="isSelected(obj.name)"
               hide-details
               density="compact"
               @update:model-value="(v: boolean | null) => emit('toggleObject', obj, !!v)"
             />
-            <span class="text-body-2">{{ obj.name }}</span>
+            <span class="cq-dialog__name">{{ obj.name }}</span>
             <v-select
               v-if="allVersions(obj).length > 1"
               :model-value="getRowVersion(obj.name, obj)"
@@ -120,15 +113,13 @@ const sampleMenuProps = {
               density="compact"
               hide-details
               variant="outlined"
-              class="version-select flex-grow-1"
+              class="cq-dialog__version"
               @update:model-value="(v: number) => emit('versionChange', obj, v)"
             />
-          </div>
-        </div>
+          </li>
+        </ul>
 
-        <v-divider class="my-3" />
-
-        <h6 class="text-subtitle-2 mb-2">Load from URL</h6>
+        <h6 class="cq-dialog__section">Load from URL</h6>
         <v-select
           :model-value="selectedSample"
           :items="sampleModelUrls"
@@ -140,6 +131,7 @@ const sampleMenuProps = {
           density="compact"
           hide-details
           clearable
+          variant="outlined"
           placeholder="Choose a model…"
           class="mb-2"
           @update:model-value="onSampleSelect"
@@ -149,33 +141,181 @@ const sampleMenuProps = {
           label="Model URL (.glb / .gltf)"
           density="compact"
           hide-details
+          variant="outlined"
           class="mb-2"
         />
-        <p v-if="urlError" class="text-error text-body-2 mb-2">{{ urlError }}</p>
-        <v-btn
-          color="primary"
-          :loading="urlLoading"
-          :disabled="!urlInput.trim()"
+        <p v-if="urlError" class="cq-dialog__error">{{ urlError }}</p>
+        <button
+          type="button"
+          class="cq-dialog__cta"
+          :disabled="urlLoading || !urlInput.trim()"
           @click="emit('loadFromUrl')"
         >
-          Load
-        </v-btn>
-      </v-card-text>
+          {{ urlLoading ? "Loading…" : "Load" }}
+        </button>
+      </div>
     </v-card>
   </v-dialog>
 </template>
 
 <style scoped>
-.dialog-body {
-  max-height: min(70vh, 520px);
-  overflow-y: auto;
+.cq-dialog {
+  border: var(--cq-border);
+  border-radius: var(--cq-radius-lg);
 }
-.server-object-list {
-  max-height: 240px;
-  overflow-y: auto;
+
+.cq-dialog__head {
+  display: flex;
+  align-items: center;
+  gap: var(--cq-space-1);
+  padding: var(--cq-space-2) var(--cq-space-2) var(--cq-space-2) var(--cq-space-4);
+  border-bottom: var(--cq-border);
 }
-.version-select {
-  max-width: 140px;
+
+.cq-dialog__title {
+  flex: 1 1 auto;
+  font-size: var(--cq-text-label);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.cq-dialog__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--cq-radius-sm);
+  background: transparent;
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.cq-dialog__btn:hover:not(:disabled) {
+  background: rgba(var(--v-theme-on-surface), 0.1);
+  opacity: 1;
+}
+
+.cq-dialog__body {
+  max-height: min(70vh, 540px);
+  padding: var(--cq-space-4);
+}
+
+.cq-dialog__section {
+  margin: 0 0 var(--cq-space-2);
+  font-size: var(--cq-text-section);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.cq-dialog__section + * {
+  margin-bottom: var(--cq-space-4);
+}
+
+.cq-dialog__list + .cq-dialog__section,
+.cq-dialog__note + .cq-dialog__section,
+.cq-dialog__loading + .cq-dialog__section,
+.cq-dialog__error + .cq-dialog__section {
+  margin-top: var(--cq-space-5);
+  padding-top: var(--cq-space-4);
+  border-top: var(--cq-border);
+}
+
+.cq-dialog__note {
+  font-size: var(--cq-text-label);
+  line-height: 1.5;
+  opacity: 0.6;
+}
+
+.cq-dialog__note code {
+  font-size: 0.85em;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(var(--v-theme-on-surface), 0.1);
+}
+
+.cq-dialog__error {
+  font-size: var(--cq-text-label);
+  color: rgb(var(--v-theme-error));
+}
+
+.cq-dialog__loading {
+  display: flex;
+  justify-content: center;
+  padding: var(--cq-space-4) 0;
+}
+
+.cq-dialog__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 220px;
+}
+
+.cq-dialog__list li {
+  display: flex;
+  align-items: center;
+  gap: var(--cq-space-2);
+  min-height: var(--cq-list-row-h);
+}
+
+/* Vuetify's selection control grows by default, which pushed the name to the
+   middle of the row. */
+.cq-dialog__list :deep(.v-selection-control) {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.cq-dialog__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--cq-text-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cq-dialog__version {
+  flex: 0 0 130px;
+  width: 130px;
+  font-size: var(--cq-text-label);
+}
+
+.cq-dialog__version :deep(.v-field) {
+  border-radius: var(--cq-radius-sm);
+  font-size: var(--cq-text-label);
+}
+
+.cq-dialog__version :deep(.v-field__input) {
+  min-height: var(--cq-control-h);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.cq-dialog__cta {
+  padding: var(--cq-space-2) var(--cq-space-4);
+  font-size: var(--cq-text-body);
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+  background: rgba(var(--v-theme-primary), 0.9);
+  border: 0;
+  border-radius: var(--cq-radius-md);
+  cursor: pointer;
+}
+
+.cq-dialog__cta:hover:not(:disabled) {
+  background: rgb(var(--v-theme-primary));
+}
+
+.cq-dialog__cta:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>
 
@@ -185,6 +325,7 @@ const sampleMenuProps = {
   max-height: 280px;
   overflow: hidden;
 }
+
 .sample-model-menu .v-list.sample-model-list,
 .sample-model-menu .v-list {
   max-height: 240px !important;

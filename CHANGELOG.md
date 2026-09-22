@@ -52,11 +52,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLI prints a deployment-posture log line on startup pointing at
   [SECURITY.md](SECURITY.md).
 
+- Viewer UI redesigned around three zones: a left rail dedicated to objects
+  (compact list with face/edge/vertex counts, master-detail inspector below,
+  `+` opens the object picker), the viewport edge to edge with an overlay
+  toolbar and the orientation gizmo, and a minimizable floating panel on the
+  right holding Environment, Camera, Overlays and Selection plus export and
+  licenses. Vuetify's layout wrappers are replaced by a CSS grid; its components
+  stay.
+- Design tokens (`frontend/styles/tokens.css`, `frontend/theme.ts`) and five
+  control primitives (`SettingRow`, `SliderControl`, `ToggleControl`,
+  `SelectControl`, `PanelSection`) back every setting, so all controls share one
+  label column and density and every slider shows an editable numeric readout.
+  Dark-first `cadDark` / `cadLight` themes.
+- Per-object three.js side effects move out of `Model.vue` into
+  `useModelSceneEffects`, driven by a `Map<name, EffectScope>` in
+  `useModelEffectsManager`, so opacity, clipping, wireframe and fat lines keep
+  applying to objects that are not the one shown in the inspector. Selection
+  and camera state move to `useSelectionTools` / `useCameraTools`.
+- Export-scene shortcut moves from `d` to `Ctrl/Cmd+S`; `d` was also bound to
+  "toggle distances".
+- Vuetify icons come from the `mdi-svg` set; the MDI font was never installed.
+- Base colour is an explicit override: a non-default colour replaces the mesh's
+  vertex colours, white keeps the model's own colours.
+- Feature picking holds three.js objects in `shallowRef` / `markRaw` instead of
+  deep refs, taking a pick from 90-115 ms to 3.5-7 ms.
+
 ### Removed
 - `docs/release-notes-v2.0.0.md` (folded into this changelog under
   [v2.0.0](#200) below).
 - Hardcoded `--platform linux/amd64` requirement from `docs/install.md` for
   hosts where ARM64 wheels of `cadquery-ocp` are available.
+
+### Fixed
+- Orientation gizmo never rendered: an `immediate` watch ran before the template
+  ref existed, and the `THREE` global shim was scoped to construction so
+  `update()` threw.
+- Duplicate fat lines after overlapping edge-width changes, and wrong fat-line
+  widths after a window resize (`resize` never fires on an element, and the
+  listener removed a different closure than it added).
+- Vuetify's internal icons were patched with `data:` URIs hardcoded to
+  `fill="white"` and were invisible in the light theme.
+- `onElemReady` leaked a watcher created outside any effect scope.
+- Background colour setting was inert (model-viewer has no such feature). It is
+  now painted on the element, which also makes Shadow and Softness visibly take
+  effect.
+- Camera lurched on every unrelated setting change because a deep watcher
+  re-applied the target; it now fires only when the target itself changes.
+- Auto-rotate and AR could not be switched off: `:auto-rotate="false"` wrote the
+  string `"false"`, which lit reads as true. Boolean attributes are now
+  present-or-absent.
+- Base colour never applied because vertex colours always took precedence.
+- Recenter & fit framed the world origin, where the axes helper is drawn, instead
+  of the geometry.
+- Picking stopped working after the object list emptied and refilled: mouse
+  listeners stayed bound to the discarded model-viewer element.
+- Back-face meshes are now parented to their source mesh's node instead of the
+  scene root. GLBs with a transformed parent node (for example the Y-up root
+  that OCC's glTF writer emits for assemblies) no longer render a second grey
+  copy of the model rotated 90 degrees.
 
 ## [2.0.0]
 

@@ -45,10 +45,12 @@ function onColorUpdate(payload: { hex?: string }) {
 }
 
 .swatch {
-  width: 28px;
-  height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  /* Theme token, not a hardcoded white: a white swatch was invisible on the
+     light surface. */
+  border: 1px solid rgba(var(--v-border-color), 0.9);
+  border-radius: var(--cq-radius-sm, 4px);
   cursor: pointer;
   padding: 0;
 }

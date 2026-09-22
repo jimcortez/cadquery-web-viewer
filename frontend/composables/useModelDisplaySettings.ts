@@ -1,6 +1,8 @@
 import { inject, provide, reactive, type InjectionKey } from "vue";
 
 export type ModelDisplayState = {
+  /** Master visibility, independent of which feature kinds are enabled. */
+  visible: boolean;
   enabledFeatures: number[];
   opacity: number;
   wireframe: boolean;
@@ -23,6 +25,7 @@ export type ModelDisplayState = {
 
 function defaultModelDisplayState(edgeWidthDefault = 0): ModelDisplayState {
   return {
+    visible: true,
     enabledFeatures: [0, 1, 2],
     opacity: 1,
     wireframe: false,
