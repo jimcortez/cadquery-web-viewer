@@ -94,6 +94,10 @@ Validation: `object.created` / `object.versioned` require a matching stored `nam
 
 Versioned GLB storage. Object-level **`notes`** and **`settings`** apply to all versions of a name.
 
+Every stored object is an **assembly**: one GLB whose root node has one child node per named part
+(a single shape is an assembly with one part). The optional per-version **`assembly`** manifest
+describes the parts; see [Assemblies](#assemblies) below.
+
 ### `GET /api/object`
 
 List all objects. One row per name; top-level `version` / `hash` / `created_at` / `kwargs` are the **latest** version; `versions` lists older versions **newest first** (excluding latest).
@@ -107,19 +111,22 @@ List all objects. One row per name; top-level `version` / `hash` / `created_at` 
       "settings": {},
       "version": 2,
       "hash": "...",
-      "kwargs": {},
+      "kwargs": {"assembly": {"schema": 1, "name": "part_a", "tags": [], "parts": [{"name": "part_a", "index": 0, "color": null, "tags": []}]}},
+      "assembly": {"schema": 1, "name": "part_a", "tags": [], "parts": [{"name": "part_a", "index": 0, "color": null, "tags": []}]},
       "created_at": "2026-05-16T18:30:00.123Z",
       "in_memory": true,
       "on_disk": true,
       "versions": [
-        {"version": 1, "hash": "...", "created_at": "2026-05-16T16:00:00.000Z"}
+        {"version": 1, "hash": "...", "created_at": "2026-05-16T16:00:00.000Z", "assembly": null}
       ]
     }
   ]
 }
 ```
 
-`created_at` values are ISO 8601 UTC (e.g. `2026-05-16T18:30:00.123Z`).
+`created_at` values are ISO 8601 UTC (e.g. `2026-05-16T18:30:00.123Z`). `assembly` is the
+manifest stored in that version's `kwargs["assembly"]`, or `null` when the version has none
+(plain GLB imports, versions stored before assemblies existed).
 
 ### `PUT /api/object/<name>`
 
@@ -128,6 +135,7 @@ Store a GLB version. **Does not** publish SSE. Name comes from the URL path only
 Use **either** multipart upload **or** JSON import (not both).
 
 **Multipart:** `glb` (file), `metadata` (JSON string with required `hash`, optional `kwargs`).
+Put the assembly manifest in `kwargs.assembly` so it is listed without parsing the GLB.
 
 **JSON** (`Content-Type: application/json`):
 
@@ -192,6 +200,44 @@ Delete all stored objects. Does not publish `scene.cleared` (call `POST /api/eve
 
 ---
 
+## Assemblies
+
+An assembly is one object name, one GLB per version, and a list of named **parts**. Parts are
+shown/hidden and recoloured individually in the viewer; removal and versioning happen per
+assembly.
+
+**GLB layout** (as produced by the Python tessellator, `cadquery_web_viewer.tessellate.tessellate_parts`):
+
+| Element | Content |
+|---------|---------|
+| `nodes[0]` | root: `name` = object name, no mesh, `children` = part nodes, `extras["__cadquery_web_viewer_assembly"]` = manifest |
+| `nodes[i]` | one per part: `name` = part name, `mesh` = its mesh, `extras["__cadquery_web_viewer_part"]` = part name |
+| `meshes[i-1]` | TRIANGLES / LINES / POINTS primitives with `COLOR_0`; each primitive also carries the part extras key |
+| `materials` | one per part (face colour is baked as vertex colour, not as `baseColorFactor`) |
+
+The browser derives the part list from the part extras key, so an uploaded GLB is self-describing.
+A GLB without part tags (e.g. a URL import) is treated as a single part named after the object.
+
+**Manifest** (`kwargs.assembly`, schema `1`):
+
+```json
+{
+  "schema": 1,
+  "name": "k6_1",
+  "tags": ["bevel", "part:k6_1"],
+  "parts": [
+    {"name": "segment_00", "index": 0, "color": "#e04a4a", "tags": ["body:segment_00", "index:0"]},
+    {"name": "segment_01", "index": 1, "color": null, "tags": ["body:segment_01", "index:1"]}
+  ]
+}
+```
+
+`color` is `#rrggbb` or `null` (default face colour). Because glTF writers drop `null` and empty
+lists from `extras`, readers should treat missing `color`/`tags` as those defaults
+(`cadquery_web_viewer.assembly.normalize_manifest`).
+
+---
+
 ## Static UI
 
 | Route | Behavior |
@@ -205,7 +251,10 @@ Delete all stored objects. Does not publish `scene.cleared` (call `POST /api/eve
 
 Helpers in `cadquery_web_viewer.http_client`:
 
-- `remote_show` — `PUT` each object, then `POST /api/events` (`scene.cleared` + `object.created` / `object.versioned`).
+- `remote_show` — `PUT` each object, then `POST /api/events` (`scene.cleared` + `object.created` / `object.versioned`). CadQuery `Assembly` / `AssemblySpec` inputs become one multi-part object.
+- `remote_show_assembly` — publish one object built from `(part_name, shape)` pairs, a CadQuery `Assembly` or an `AssemblySpec`.
+- `remote_show_glb` — publish an already-built GLB (with optional `kwargs["assembly"]` manifest and hash).
+- `remote_show_payloads` — publish `(name, glb, hash, kwargs)` tuples from `engine.prepare_glb_upload_batch` / `engine.prepare_assembly_upload`.
 - `remote_remove` — `DELETE /api/object/<name>`.
 - `remote_clear` — `POST scene.cleared` + `DELETE /api/object`.
 - `remote_list_objects` — `GET /api/object`.

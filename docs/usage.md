@@ -56,6 +56,33 @@ show(
 
 The [`examples/remote/`](../examples/remote/) script prints a command to start the server, then waits for you before calling `show()`.
 
+### Assemblies: one object with named parts
+
+Every object is stored as an assembly; `show(box)` makes a one-part assembly named after the
+variable. To show several bodies as **one** object with individually toggleable parts, pass a
+CadQuery `Assembly`, a list of `(part_name, shape)` pairs, or an `AssemblySpec`:
+
+```python
+from cadquery_web_viewer import AssemblyPart, AssemblySpec, show, show_assembly
+
+show_assembly([("base", base), ("lid", lid)], "enclosure")
+
+spec = AssemblySpec(
+    name="enclosure",
+    tags=["rev-b"],
+    parts=(
+        AssemblyPart("base", base, color=(0.9, 0.3, 0.3, 1.0), tags=("printed",)),
+        AssemblyPart("lid", lid),
+    ),
+)
+show(spec, server_type="remote", remote_options={"host": "localhost", "port": 32323})
+```
+
+`show(cq_assembly)` also works: each shape-bearing node becomes a part (world location applied,
+node colour kept). Parts can be hidden and recoloured one by one in the browser; removal and
+versions apply to the whole assembly. To get the GLB and manifest without publishing (for example
+to save them next to other exports), call `cadquery_web_viewer.engine.prepare_assembly_upload`.
+
 ### Buffer only, then export GLBs (no browser)
 
 **Tessellation** here means turning CAD solids into triangle meshes (GLB) the viewer can draw.

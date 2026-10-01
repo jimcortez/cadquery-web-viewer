@@ -1,9 +1,12 @@
+import type { AssemblyManifest } from "./assembly";
 import { settings } from "./settings";
 
 export type ObjectVersionSummary = {
   version: number;
   hash: string;
   created_at: string;
+  /** Manifest stored with that version, or null for versions without one. */
+  assembly?: AssemblyManifest | null;
 };
 
 export type ServerObjectDescriptor = {
@@ -13,6 +16,8 @@ export type ServerObjectDescriptor = {
   version: number;
   hash: string;
   kwargs: Record<string, unknown>;
+  /** Latest version's assembly manifest (`kwargs.assembly`), or null. */
+  assembly?: AssemblyManifest | null;
   created_at: string;
   in_memory: boolean;
   on_disk: boolean;

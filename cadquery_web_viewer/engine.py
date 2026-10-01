@@ -20,6 +20,15 @@ from OCP.TopLoc import TopLoc_Location
 from OCP.TopoDS import TopoDS_Shape
 from PIL import Image
 
+from cadquery_web_viewer.assembly import (
+    KWARGS_ASSEMBLY_KEY,
+    AssemblyPart,
+    AssemblySpec,
+    assembly_from_object,
+    is_assembly_like,
+    manifest_dict,
+    preprocessed,
+)
 from cadquery_web_viewer.cad import CADCoreLike, CADLike, ColorTuple, _hashcode, get_color, get_shape, grab_all_cad
 from cadquery_web_viewer.events_api import (
     OBJECT_CREATED,
@@ -38,12 +47,15 @@ from cadquery_web_viewer.object_store import (
 )
 from cadquery_web_viewer.pubsub import BufferedPubSub
 from cadquery_web_viewer.rwlock import RWLock
-from cadquery_web_viewer.tessellate import tessellate
+from cadquery_web_viewer.tessellate import tessellate_parts
 
 logger = logging.getLogger(__name__)
 
 
 CadQueryWebViewerObject = Union[bytes, CADCoreLike]
+
+ShowPayload = tuple[str, bytes, str, dict[str, Any]]
+"""``(name, glb, hash, kwargs)`` ready to store or upload."""
 
 
 class ScenePublishError(Exception):
@@ -60,7 +72,8 @@ class _CadShowPayload:
 
     name: str
     hash: str
-    obj: CadQueryWebViewerObject
+    """Content hash; empty for :class:`AssemblySpec` payloads until rendered (hash of the GLB)."""
+    obj: CadQueryWebViewerObject | AssemblySpec
     kwargs: dict[str, Any] = field(default_factory=dict)
 
 
@@ -425,45 +438,44 @@ class CadQueryWebViewer:
         - faces: Whether to tessellate and show the faces of the object (default: True)
         - edges: Whether to tessellate and show the edges of the object (default: True)
         - vertices: Whether to tessellate and show the vertices of the object (default: True)
+        - assembly: An explicit assembly manifest dict (see ``cadquery_web_viewer.assembly``); by default a
+          one-part manifest is generated per object, and CadQuery ``Assembly`` inputs become multi-part objects.
 
-        :param objs: The CAD objects to show. Can be CAD-like objects (solids, locations, etc.) or bytes (GLTF) objects.
+        :param objs: The CAD objects to show. Can be CAD-like objects (solids, locations, assemblies, etc.) or
+            bytes (GLTF) objects.
         :param names: The names of the objects. If None, the variable names will be used (if possible). The number of
             names must match the number of objects. An object of the same name will be replaced in the frontend.
         :param kwargs: Additional options for the show_object event.
         """
-        # Prepare the arguments
         start = time.time()
-        names = _prepare_show_names(objs, names)
-        _normalize_show_color_kwargs(kwargs)
+        kw = dict(kwargs)
+        payloads_in, resolved = _show_payloads_from_inputs(*objs, names=names, kwargs=kw)
+        payloads = [_render_payload(self, p) for p in payloads_in]
+        self.show_payloads(payloads, auto_clear=kw.get("auto_clear", True))
+        logger.info("show %s took %.3f seconds", resolved, time.time() - start)
 
-        if kwargs.get("auto_clear", True):
+    def show_payloads(self, payloads: list[ShowPayload], *, auto_clear: bool = True) -> None:
+        """Store already-rendered ``(name, glb, hash, kwargs)`` payloads and publish scene events."""
+        names = [p[0] for p in payloads]
+        if auto_clear:
             self.clear(except_names=names)
-
-        for obj, name in zip(objs, names):
-            payload = _make_show_payload_for_object(obj, name, kwargs)
-            glb = _glb_bytes_from_show_payload(self, payload)
+        for name, glb, content_hash, kw in payloads:
             in_scene = self.scene_has_name(name)
-            version, _ = self.put_object_version(name, payload.hash, glb, payload.kwargs)
-            if in_scene:
-                self.publish_event(
-                    {
-                        "type": OBJECT_VERSIONED,
-                        "name": name,
-                        "version": version,
-                        "hash": payload.hash,
-                    }
-                )
-            else:
-                self.publish_event(
-                    {
-                        "type": OBJECT_CREATED,
-                        "name": name,
-                        "version": version,
-                        "hash": payload.hash,
-                    }
-                )
+            version, _ = self.put_object_version(name, content_hash, glb, kw)
+            self.publish_event(
+                {
+                    "type": OBJECT_VERSIONED if in_scene else OBJECT_CREATED,
+                    "name": name,
+                    "version": version,
+                    "hash": content_hash,
+                }
+            )
 
-        logger.info("show %s took %.3f seconds", names, time.time() - start)
+    def show_assembly(self, obj: Any, name: str | None = None, **kwargs: Any) -> None:
+        """Show ``obj`` as one multi-part object. See :func:`cadquery_web_viewer.assembly.assembly_from_object`
+        for accepted inputs and :meth:`show` for keyword arguments."""
+        resolved = name or _find_var_name(obj)
+        self.show(assembly_from_object(obj, resolved), names=[resolved], **kwargs)
 
     def show_cad_all(self, **kwargs):
         """Publishes all CAD objects in the current scope to the server. See `show` for more details."""
@@ -611,6 +623,10 @@ def _normalize_show_color_kwargs(kwargs: dict[str, Any]) -> None:
             kwargs[color_name] = get_color(kwargs[color_name]) or _read_color(kwargs[color_name])
 
 
+def _one_part_manifest(name: str, color: ColorTuple | None) -> dict[str, Any]:
+    return manifest_dict(AssemblySpec(name=name, parts=(AssemblyPart(name=name, obj=None, color=color),)))
+
+
 def _make_show_payload_for_object(
     obj: CadQueryWebViewerObject, name: str, kwargs: dict[str, Any]
 ) -> _CadShowPayload:
@@ -624,27 +640,63 @@ def _make_show_payload_for_object(
     body: CadQueryWebViewerObject = obj
     if not isinstance(body, bytes):
         body = _preprocess_cad(body, **_kwargs)
+        if KWARGS_ASSEMBLY_KEY not in _kwargs:
+            _kwargs[KWARGS_ASSEMBLY_KEY] = _one_part_manifest(
+                name, obj_color or _kwargs.get("color_faces")
+            )
     content_hash = _hashcode(body, **_kwargs)
     return _CadShowPayload(name=name, hash=content_hash, obj=body, kwargs=_kwargs or {})
 
 
-def _glb_bytes_from_show_payload(viewer: CadQueryWebViewer, payload: _CadShowPayload) -> bytes:
-    if isinstance(payload.obj, bytes):
-        return payload.obj
-    gltf = tessellate(
-        payload.obj,
-        color_faces=payload.kwargs.get("color_faces", viewer.color_faces),
-        color_edges=payload.kwargs.get("color_edges", viewer.color_edges),
-        color_vertices=payload.kwargs.get("color_vertices", viewer.color_vertices),
-        color_obj=payload.kwargs.get("color_obj", None),
-        tolerance=payload.kwargs.get("tolerance", 0.1),
-        angular_tolerance=payload.kwargs.get("angular_tolerance", 0.1),
-        faces=payload.kwargs.get("faces", True),
-        edges=payload.kwargs.get("edges", True),
-        vertices=payload.kwargs.get("vertices", True),
-        texture=payload.kwargs.get("texture", viewer.texture),
+def _make_assembly_payload(obj: Any, name: str, kwargs: dict[str, Any]) -> _CadShowPayload:
+    """Preprocess every part of an assembly-like object; the hash is computed from the GLB when rendered."""
+    spec = assembly_from_object(obj, name)
+    _kwargs = kwargs.copy()
+    _kwargs["texture"] = _read_texture_uri(kwargs.get("texture", None))
+    parts = tuple(preprocessed(part, _preprocess_cad(part.obj, **_kwargs)) for part in spec.parts)
+    spec = AssemblySpec(name=spec.name, parts=parts, tags=spec.tags)
+    if KWARGS_ASSEMBLY_KEY not in _kwargs:
+        _kwargs[KWARGS_ASSEMBLY_KEY] = manifest_dict(spec)
+    return _CadShowPayload(name=name, hash="", obj=spec, kwargs=_kwargs)
+
+
+def _tessellation_kwargs(viewer: CadQueryWebViewer, kwargs: dict[str, Any]) -> dict[str, Any]:
+    return dict(
+        color_faces=kwargs.get("color_faces", viewer.color_faces),
+        color_edges=kwargs.get("color_edges", viewer.color_edges),
+        color_vertices=kwargs.get("color_vertices", viewer.color_vertices),
+        tolerance=kwargs.get("tolerance", 0.1),
+        angular_tolerance=kwargs.get("angular_tolerance", 0.1),
+        faces=kwargs.get("faces", True),
+        edges=kwargs.get("edges", True),
+        vertices=kwargs.get("vertices", True),
+        texture=kwargs.get("texture", viewer.texture),
     )
-    return b"".join(gltf.save_to_bytes())
+
+
+def _render_payload(viewer: CadQueryWebViewer, payload: _CadShowPayload) -> ShowPayload:
+    """Tessellate (or pass through bytes) and return ``(name, glb, hash, kwargs)``."""
+    kw = dict(payload.kwargs or {})
+    manifest = kw.get(KWARGS_ASSEMBLY_KEY)
+    if isinstance(payload.obj, bytes):
+        return payload.name, payload.obj, payload.hash, kw
+    if isinstance(payload.obj, AssemblySpec):
+        spec = payload.obj
+        gltf = tessellate_parts(
+            [(part.name, part.obj, part.color) for part in spec.parts],
+            assembly_name=spec.name,
+            manifest=manifest,
+            **_tessellation_kwargs(viewer, kw),
+        )
+        glb = b"".join(gltf.save_to_bytes())
+        return payload.name, glb, _hashcode(glb, **kw), kw
+    gltf = tessellate_parts(
+        [(payload.name, payload.obj, kw.get("color_obj", None))],
+        assembly_name=payload.name,
+        manifest=manifest,
+        **_tessellation_kwargs(viewer, kw),
+    )
+    return payload.name, b"".join(gltf.save_to_bytes()), payload.hash, kw
 
 
 def _show_payloads_from_inputs(
@@ -654,7 +706,12 @@ def _show_payloads_from_inputs(
 ) -> tuple[list[_CadShowPayload], list[str]]:
     resolved = _prepare_show_names(objs, names)
     _normalize_show_color_kwargs(kwargs)
-    payloads = [_make_show_payload_for_object(obj, name, kwargs) for obj, name in zip(objs, resolved)]
+    payloads = [
+        _make_assembly_payload(obj, name, kwargs)
+        if is_assembly_like(obj)
+        else _make_show_payload_for_object(obj, name, kwargs)
+        for obj, name in zip(objs, resolved)
+    ]
     return payloads, resolved
 
 
@@ -680,36 +737,34 @@ def glb_bytes_list_from_show_inputs(
     Uses the same tessellation and metadata rules as :meth:`CadQueryWebViewer.show`. Does not touch
     the global :data:`cadquery_web_viewer.viewer` or any show-event buffer.
     """
-    kw = dict(kwargs)
-    payloads, resolved = _show_payloads_from_inputs(*objs, names=names, kwargs=kw)
-    defaults = get_default_engine()
-    glbs = [_glb_bytes_from_show_payload(defaults, p) for p in payloads]
-    return glbs, resolved
+    payloads, resolved = prepare_glb_upload_batch(*objs, names=names, **kwargs)
+    return [p[1] for p in payloads], resolved
 
 
 def prepare_glb_upload_batch(
     *objs: Any,
     names: str | list[str] | None = None,
     **kwargs: Any,
-) -> tuple[list[tuple[str, bytes, str, dict[str, Any]]], list[str]]:
+) -> tuple[list[ShowPayload], list[str]]:
     """
-    Tessellate using the same path as :func:`glb_bytes_list_from_show_inputs` and return
-    ``(name, glb, hash, kwargs)`` per object for multipart upload. The second return value is the
-    resolved name list in the same order as the payloads.
+    Tessellate using the same path as :meth:`CadQueryWebViewer.show` and return
+    ``(name, glb, hash, kwargs)`` per object for storage or multipart upload. The second return value
+    is the resolved name list in the same order as the payloads. CadQuery ``Assembly`` and
+    :class:`AssemblySpec` inputs become one multi-part payload each.
     """
     kw = dict(kwargs)
     payloads_in, resolved = _show_payloads_from_inputs(*objs, names=names, kwargs=kw)
     defaults = get_default_engine()
-    payloads = [
-        (
-            p.name,
-            _glb_bytes_from_show_payload(defaults, p),
-            p.hash,
-            dict(p.kwargs or {}),
-        )
-        for p in payloads_in
-    ]
-    return payloads, resolved
+    return [_render_payload(defaults, p) for p in payloads_in], resolved
+
+
+def prepare_assembly_upload(obj: Any, name: str, **kwargs: Any) -> ShowPayload:
+    """Render ``obj`` (see :func:`assembly_from_object`) as one multi-part GLB.
+
+    Returns ``(name, glb, hash, kwargs)``; ``kwargs["assembly"]`` is the manifest embedded in the GLB.
+    """
+    payloads, _ = prepare_glb_upload_batch(assembly_from_object(obj, name), names=[name], **kwargs)
+    return payloads[0]
 
 
 def sizeof_fmt(num, suffix="B"):

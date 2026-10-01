@@ -8,8 +8,9 @@ import DisplaySection from "./sections/DisplaySection.vue";
 import AppearanceSection from "./sections/AppearanceSection.vue";
 import SectionSection from "./sections/SectionSection.vue";
 import ArrangementSection from "./sections/ArrangementSection.vue";
+import AssemblySection from "./sections/AssemblySection.vue";
 
-const props = defineProps<{ object: SceneObject }>();
+const props = defineProps<{ object: SceneObject; selectedPart: string | null }>();
 
 const { getSettings } = useModelDisplaySettings();
 // ObjectsPanel keys this component by object name, so a new selection remounts it
@@ -31,6 +32,11 @@ const segments = computed<Segment[]>(() => [
     </header>
 
     <div class="cq-inspector__sections cq-scroll">
+      <assembly-section
+        v-if="object.parts.length > 1 || object.tags.length > 0"
+        :object="object"
+        :selected-part="selectedPart"
+      />
       <display-section
         :display="display"
         :edge-count="object.edgeCount"

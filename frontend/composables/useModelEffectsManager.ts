@@ -4,6 +4,11 @@ import { useModelSceneEffects } from "./useModelSceneEffects";
 import type { ModelDisplaySettingsContext } from "./useModelDisplaySettings";
 import type { SceneObjectsContext } from "./useSceneObjects";
 
+export type ModelEffectsManagerOptions = {
+  /** Called before a part's vertex colours are rewritten, so face highlights on that object can be dropped. */
+  onPartRecolor?: (modelName: string) => void;
+};
+
 /**
  * Keeps one live effect scope per scene object.
  *
@@ -17,6 +22,7 @@ export function useModelEffectsManager(
   sceneObjects: SceneObjectsContext,
   displaySettings: ModelDisplaySettingsContext,
   viewer: Ref<InstanceType<typeof ModelViewerWrapper> | null>,
+  options: ModelEffectsManagerOptions = {},
 ) {
   const scopes = new Map<string, EffectScope>();
 
@@ -43,6 +49,13 @@ export function useModelEffectsManager(
                 vertexCount: obj?.vertexCount ?? 0,
               };
             },
+            // Same reason: parts are re-derived from the document on every update.
+            getParts: () =>
+              (sceneObjects.getObject(name)?.parts ?? []).map((p) => ({
+                name: p.name,
+                display: displaySettings.getPartSettings(name, p.name),
+              })),
+            onPartRecolor: options.onPartRecolor,
             viewer,
             display: displaySettings.getSettings(name),
           }),

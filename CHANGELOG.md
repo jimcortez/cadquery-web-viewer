@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Assemblies.** Every object is now an assembly: one GLB per version whose root node has one
+  child node (and mesh/material) per named part, tagged with `extras["__cadquery_web_viewer_part"]`,
+  plus a manifest in the root node extras and in `kwargs["assembly"]`. `GET /api/object` and the
+  JSON descriptor expose it as `assembly` (top level and per entry in `versions[]`).
+- Python: `AssemblySpec` / `AssemblyPart`, `show_assembly()`, `show(cq_assembly)`,
+  `engine.show_payloads()`, `engine.prepare_assembly_upload()`,
+  `http_client.remote_show_assembly()` / `remote_show_glb()` / `remote_show_payloads()`,
+  `tessellate.tessellate_parts()`, and the `cadquery_web_viewer.assembly` module.
 - Project documentation: `SECURITY.md`, expanded `CONTRIBUTING.md`, GitHub issue
   and pull-request templates, `CODEOWNERS`.
 - README badges (PyPI, Python versions, license, CI, downloads), live-demo link,
@@ -26,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multi-arch publishing is a follow-up rather than an upstream limitation.
 
 ### Changed
+- `GLTFMgr` builds a root node with one child node/mesh/material per part instead of a single
+  node and mesh; single shapes still produce one part (named after the object).
+- `show()` tessellates once via `prepare_glb_upload_batch` and hands `(name, glb, hash, kwargs)`
+  payloads to the engine or remote client, so per-object manifests survive every server type.
 - All GitHub Actions are now pinned to commit SHAs (with the human tag in a
   trailing comment for Dependabot).
 - Single source of version truth: `package.json` is authoritative; the Hatchling

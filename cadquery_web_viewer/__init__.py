@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Literal
 
+from cadquery_web_viewer.assembly import AssemblyPart, AssemblySpec, assembly_from_object
 from cadquery_web_viewer.cad import grab_all_cad, image_to_gltf
 from cadquery_web_viewer.engine import (
     CadQueryWebViewer,
     CadQueryWebViewerProtocol,
     get_default_engine,
     glb_bytes_list_from_show_inputs,
+    prepare_glb_upload_batch,
 )
 from cadquery_web_viewer.options_types import RemoteOptions, ServerOptions
 
@@ -78,25 +80,51 @@ def show(
     block_until_disconnect: bool = True,
     **kwargs: Any,
 ) -> None:
-    disp_objs: tuple[Any, ...] = objs
-    disp_names: str | list[str] | None = names
-    if objs and any(not isinstance(o, bytes) for o in objs):
-        glbs, resolved = glb_bytes_list_from_show_inputs(*objs, names=names, **kwargs)
-        disp_objs = tuple(glbs)
-        disp_names = resolved
+    """Show CAD-like objects, ``bytes`` GLBs, CadQuery assemblies or :class:`AssemblySpec` objects.
+
+    Every object is stored as an assembly: single shapes get a one-part manifest, CadQuery
+    ``Assembly`` / :class:`AssemblySpec` inputs become one object with several named parts.
+    """
+    payloads, _ = prepare_glb_upload_batch(*objs, names=names, **kwargs)
+    auto_clear = kwargs.get("auto_clear", True)
 
     if server_type == "local":
-        viewer.show(*disp_objs, names=disp_names, **kwargs)
+        viewer.show_payloads(payloads, auto_clear=auto_clear)
         return
     if server_type == "remote":
         from cadquery_web_viewer import http_client
 
-        http_client.remote_show(*disp_objs, names=disp_names, remote_options=remote_options, **kwargs)
+        http_client.remote_show_payloads(payloads, remote_options=remote_options, auto_clear=auto_clear)
         return
     _in_process_session(
         server_options=server_options,
         block_until_disconnect=block_until_disconnect,
-        body=lambda: viewer.show(*disp_objs, names=disp_names, **kwargs),
+        body=lambda: viewer.show_payloads(payloads, auto_clear=auto_clear),
+    )
+
+
+def show_assembly(
+    obj: Any,
+    name: str,
+    server_type: ServerType = "in-process",
+    remote_options: RemoteOptions | None = None,
+    server_options: ServerOptions | None = None,
+    block_until_disconnect: bool = True,
+    **kwargs: Any,
+) -> None:
+    """Show ``obj`` as one multi-part object named ``name``.
+
+    ``obj`` may be a CadQuery ``Assembly`` (one part per shape-bearing node, node colours kept),
+    an :class:`AssemblySpec`, a list of ``(part_name, shape)`` pairs, or a single shape.
+    """
+    show(
+        assembly_from_object(obj, name),
+        names=[name],
+        server_type=server_type,
+        remote_options=remote_options,
+        server_options=server_options,
+        block_until_disconnect=block_until_disconnect,
+        **kwargs,
     )
 
 
@@ -163,6 +191,8 @@ def clear(
 
 
 __all__ = [
+    "AssemblyPart",
+    "AssemblySpec",
     "CadQueryWebViewer",
     "CadQueryWebViewerProtocol",
     "get_default_engine",
@@ -177,5 +207,6 @@ __all__ = [
     "render",
     "show",
     "show_all",
+    "show_assembly",
     "viewer",
 ]

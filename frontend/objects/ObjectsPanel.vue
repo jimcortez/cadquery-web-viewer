@@ -9,7 +9,7 @@ import ObjectInspector from "./ObjectInspector.vue";
 
 const emit = defineEmits<{ add: []; remove: [string]; collapse: [] }>();
 
-const { objects, selectedObjectName, select } = useSceneObjects();
+const { objects, selectedObjectName, selectedPartName, select, selectPart } = useSceneObjects();
 
 const selectedObject = computed(
   () => objects.value.find((o) => o.name === selectedObjectName.value) ?? null,
@@ -41,13 +41,20 @@ const selectedObject = computed(
         :key="object.name"
         :object="object"
         :selected="object.name === selectedObjectName"
+        :selected-part="object.name === selectedObjectName ? selectedPartName : null"
         @select="select(object.name)"
+        @select-part="(part) => selectPart(object.name, part)"
         @remove="emit('remove', object.name)"
       />
     </div>
 
     <div class="cq-rail__inspector">
-      <object-inspector v-if="selectedObject" :key="selectedObject.name" :object="selectedObject" />
+      <object-inspector
+        v-if="selectedObject"
+        :key="selectedObject.name"
+        :object="selectedObject"
+        :selected-part="selectedPartName"
+      />
       <p v-else class="cq-rail__empty">Select an object to edit its settings.</p>
     </div>
   </aside>

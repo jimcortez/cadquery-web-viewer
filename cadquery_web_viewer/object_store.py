@@ -156,6 +156,12 @@ def validate_settings_map(settings: dict[str, Any]) -> dict[str, SettingsValue]:
     return {k: validate_settings_value(v) for k, v in settings.items()}
 
 
+def _assembly_of(sv: StoredVersion) -> dict[str, Any] | None:
+    """The assembly manifest stored with a version (``kwargs["assembly"]``), if any."""
+    manifest = sv.kwargs.get("assembly")
+    return dict(manifest) if isinstance(manifest, dict) else None
+
+
 def latest_version_info(rec: ObjectRecord) -> tuple[int, StoredVersion] | None:
     if not rec.versions:
         return None
@@ -168,15 +174,15 @@ def describe_object_record(name: str, rec: ObjectRecord, *, in_memory: bool, on_
     if latest is None:
         raise ValueError(f"object {name!r} has no versions")
     ver, sv = latest
-    other_versions = sorted(
-        (
-            {"version": v, "hash": rec.versions[v].hash, "created_at": rec.versions[v].created_at}
-            for v in rec.versions
-            if v != ver
-        ),
-        key=lambda x: x["version"],
-        reverse=True,
-    )
+    other_versions = [
+        {
+            "version": v,
+            "hash": rec.versions[v].hash,
+            "created_at": rec.versions[v].created_at,
+            "assembly": _assembly_of(rec.versions[v]),
+        }
+        for v in sorted((v for v in rec.versions if v != ver), reverse=True)
+    ]
     return {
         "name": name,
         "notes": rec.notes,
@@ -184,6 +190,7 @@ def describe_object_record(name: str, rec: ObjectRecord, *, in_memory: bool, on_
         "version": ver,
         "hash": sv.hash,
         "kwargs": dict(sv.kwargs),
+        "assembly": _assembly_of(sv),
         "created_at": sv.created_at,
         "in_memory": in_memory,
         "on_disk": on_disk,

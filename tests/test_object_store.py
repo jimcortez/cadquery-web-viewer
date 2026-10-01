@@ -5,9 +5,9 @@ from __future__ import annotations
 import unittest
 
 from cadquery_web_viewer.object_store import (
+    _UNSET,
     UNSET,
     VersionedObjectStore,
-    _UNSET,
     describe_object_record,
     latest_version_info,
     validate_settings_map,
@@ -199,8 +199,9 @@ class TestDescribeRecord(unittest.TestCase):
         self.assertEqual(desc["hash"], "h2")
         self.assertTrue(desc["in_memory"])
         self.assertFalse(desc["on_disk"])
+        self.assertIsNone(desc["assembly"])
         self.assertEqual(desc["versions"], [
-            {"version": 1, "hash": "h1", "created_at": rec.versions[1].created_at}
+            {"version": 1, "hash": "h1", "created_at": rec.versions[1].created_at, "assembly": None}
         ])
 
     def test_latest_version_info_empty(self) -> None:

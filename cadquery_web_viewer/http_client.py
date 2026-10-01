@@ -10,7 +10,9 @@ from urllib.parse import quote
 
 import httpx
 
-from cadquery_web_viewer.engine import prepare_glb_upload_batch
+from cadquery_web_viewer.assembly import assembly_from_object
+from cadquery_web_viewer.cad import _hashcode
+from cadquery_web_viewer.engine import ShowPayload, prepare_glb_upload_batch
 from cadquery_web_viewer.events_api import OBJECT_CREATED, OBJECT_VERSIONED, SCENE_CLEARED
 from cadquery_web_viewer.options_types import RemoteOptions
 
@@ -103,9 +105,53 @@ def remote_show(
     remote_options: RemoteOptions | None = None,
     **kwargs: Any,
 ) -> None:
-    o = _resolved_remote(remote_options)
+    """Tessellate ``objs`` (CAD-like, ``bytes`` or assemblies) and publish them to a remote viewer."""
     payloads, batch_names = prepare_glb_upload_batch(*objs, names=names, **kwargs)
-    auto_clear_all = kwargs.get("auto_clear", True)
+    remote_show_payloads(
+        payloads,
+        remote_options=remote_options,
+        auto_clear=kwargs.get("auto_clear", True),
+    )
+
+
+def remote_show_assembly(
+    obj: Any,
+    name: str,
+    remote_options: RemoteOptions | None = None,
+    **kwargs: Any,
+) -> None:
+    """Publish ``obj`` as one multi-part object named ``name`` (see ``assembly_from_object``)."""
+    remote_show(assembly_from_object(obj, name), names=[name], remote_options=remote_options, **kwargs)
+
+
+def remote_show_glb(
+    name: str,
+    glb: bytes,
+    *,
+    content_hash: str | None = None,
+    kwargs: dict[str, Any] | None = None,
+    remote_options: RemoteOptions | None = None,
+    auto_clear: bool = True,
+) -> None:
+    """Publish an already-built GLB (e.g. a viewer GLB saved by a render pipeline) as one object.
+
+    ``kwargs`` may carry the assembly manifest under ``"assembly"``; ``content_hash``
+    defaults to the hash of ``glb`` and ``kwargs``.
+    """
+    kw = dict(kwargs or {})
+    h = content_hash or _hashcode(glb, **kw)
+    remote_show_payloads([(name, glb, h, kw)], remote_options=remote_options, auto_clear=auto_clear)
+
+
+def remote_show_payloads(
+    payloads: list[ShowPayload],
+    *,
+    remote_options: RemoteOptions | None = None,
+    auto_clear: bool = True,
+) -> None:
+    """``PUT`` each ``(name, glb, hash, kwargs)`` payload, then publish the scene events in one batch."""
+    o = _resolved_remote(remote_options)
+    batch_names = [p[0] for p in payloads]
     scene_before_clear: set[str] = set()
     scene_query_ok = False
     if payloads:
@@ -117,7 +163,7 @@ def remote_show(
                 "remote scene query failed (%s); will clear scene and use object.created", e
             )
     events: list[dict[str, Any]] = []
-    if auto_clear_all and payloads:
+    if auto_clear and payloads:
         except_names = list(batch_names) if scene_query_ok else []
         events.append({"type": SCENE_CLEARED, "except_names": except_names})
     for name, glb, h, kw in payloads:
@@ -129,24 +175,14 @@ def remote_show(
             raise
         version = int(result["version"])
         in_scene = scene_query_ok and name in scene_before_clear
-        if in_scene:
-            events.append(
-                {
-                    "type": OBJECT_VERSIONED,
-                    "name": name,
-                    "version": version,
-                    "hash": h,
-                }
-            )
-        else:
-            events.append(
-                {
-                    "type": OBJECT_CREATED,
-                    "name": name,
-                    "version": version,
-                    "hash": h,
-                }
-            )
+        events.append(
+            {
+                "type": OBJECT_VERSIONED if in_scene else OBJECT_CREATED,
+                "name": name,
+                "version": version,
+                "hash": h,
+            }
+        )
     if events:
         try:
             _publish_events(o["host"], o["port"], events, timeout=o["post_timeout"])

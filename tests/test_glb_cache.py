@@ -140,3 +140,14 @@ class TestGlbDiskCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAssemblyKwargsPersist(unittest.TestCase):
+    def test_kwargs_keep_assembly_manifest(self) -> None:
+        manifest = {"schema": 1, "name": "a", "tags": ["x"], "parts": [{"name": "p", "index": 0, "color": None, "tags": []}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = GlbDiskCache(tmp)
+            cache.write_version("a", 1, "h1", b"glb", {"assembly": manifest, "texture": (b"x", "image/png")})
+            entries = list(cache.list_version_entries())
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0].kwargs, {"assembly": manifest})
