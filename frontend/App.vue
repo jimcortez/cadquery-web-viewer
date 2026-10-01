@@ -44,9 +44,6 @@ const modelDisplaySettings = createModelDisplaySettingsProvider();
 void settings.then((s) => modelDisplaySettings.setDefaultEdgeWidth(s.edgeWidth));
 
 const sceneObjects = createSceneObjectsProvider(sceneDocument);
-// Each object's three.js effects run in their own scope, so they keep applying
-// while the inspector is showing some other object.
-useModelEffectsManager(sceneObjects, modelDisplaySettings, viewer);
 
 const disableTap = ref(false);
 function setDisableTap(val: boolean) {
@@ -61,10 +58,16 @@ const selectionTools = createSelectionToolsProvider({
   viewer,
   sceneDocument,
   setDisableTap,
-  onFindModel: (name) => {
+  onFindModel: (name, part) => {
     railOpen.value = true;
-    sceneObjects.select(name);
+    if (part) sceneObjects.selectPart(name, part);
+    else sceneObjects.select(name);
   },
+});
+// Each object's three.js effects run in their own scope, so they keep applying
+// while the inspector is showing some other object.
+useModelEffectsManager(sceneObjects, modelDisplaySettings, viewer, {
+  onPartRecolor: (name) => selectionTools.removeObjectSelections(name),
 });
 const cameraTools = createCameraToolsProvider(viewer, viewerSceneSettings);
 useKeyboardShortcuts(selectionTools, cameraTools);

@@ -1,4 +1,6 @@
 import logging
+from collections.abc import Sequence
+from typing import Any
 
 from build123d import Compound, Face, Location, Vector, Vertex
 from OCP.BRep import BRep_Tool
@@ -11,7 +13,7 @@ from OCP.TopoDS import TopoDS_Edge, TopoDS_Face, TopoDS_Shape, TopoDS_Vertex
 from pygltflib import GLTF2
 
 from cadquery_web_viewer.cad import CADCoreLike, ColorTuple
-from cadquery_web_viewer.gltf import GLTFMgr
+from cadquery_web_viewer.gltf import DEFAULT_PART_NAME, GLTFMgr
 
 logger = logging.getLogger(__name__)
 
@@ -20,13 +22,63 @@ def tessellate(
         cad_like: CADCoreLike, color_faces: ColorTuple, color_edges: ColorTuple, color_vertices: ColorTuple,
         color_obj: ColorTuple | None = None, tolerance: float = 0.1, angular_tolerance: float = 0.1,
         faces: bool = True, edges: bool = True, vertices: bool = True, texture: tuple[bytes, str] | None = None,
+        name: str | None = None, manifest: dict[str, Any] | None = None,
 ) -> GLTF2:
-    """Tessellate a whole shape into a list of triangle vertices and a list of triangle indices."""
-    if texture is None:
-        mgr = GLTFMgr()
-    else:
-        mgr = GLTFMgr(texture)
+    """Tessellate a single shape into a one-part assembly GLTF document.
 
+    ``name`` names both the assembly root and its single part (defaults to
+    :data:`cadquery_web_viewer.gltf.DEFAULT_PART_NAME`); ``manifest`` is attached to the root node.
+    """
+    part_name = name or DEFAULT_PART_NAME
+    return tessellate_parts(
+        [(part_name, cad_like, color_obj)],
+        assembly_name=part_name,
+        manifest=manifest,
+        color_faces=color_faces,
+        color_edges=color_edges,
+        color_vertices=color_vertices,
+        tolerance=tolerance,
+        angular_tolerance=angular_tolerance,
+        faces=faces,
+        edges=edges,
+        vertices=vertices,
+        texture=texture,
+    )
+
+
+def tessellate_parts(
+        parts: Sequence[tuple[str, CADCoreLike, ColorTuple | None]],
+        *,
+        assembly_name: str,
+        manifest: dict[str, Any] | None = None,
+        color_faces: ColorTuple, color_edges: ColorTuple, color_vertices: ColorTuple,
+        tolerance: float = 0.1, angular_tolerance: float = 0.1,
+        faces: bool = True, edges: bool = True, vertices: bool = True, texture: tuple[bytes, str] | None = None,
+) -> GLTF2:
+    """Tessellate several shapes into one GLTF document with one node/mesh per part.
+
+    :param parts: ``(part_name, shape, part_color)`` tuples; ``part_color`` overrides ``color_faces``
+        for that part (``None`` keeps the default).
+    :param assembly_name: name of the root node.
+    :param manifest: JSON-serialisable assembly manifest stored in the root node ``extras``.
+    """
+    if not parts:
+        raise ValueError("tessellate_parts needs at least one part")
+    mgr = GLTFMgr() if texture is None else GLTFMgr(texture)
+    mgr.set_assembly(assembly_name, manifest)
+    for part_name, cad_like, part_color in parts:
+        mgr.begin_part(part_name)
+        _tessellate_into(mgr, cad_like, color_faces, color_edges, color_vertices, part_color,
+                         tolerance, angular_tolerance, faces, edges, vertices)
+    return mgr.build()
+
+
+def _tessellate_into(
+        mgr: GLTFMgr, cad_like: CADCoreLike, color_faces: ColorTuple, color_edges: ColorTuple,
+        color_vertices: ColorTuple, color_obj: ColorTuple | None, tolerance: float, angular_tolerance: float,
+        faces: bool, edges: bool, vertices: bool,
+) -> None:
+    """Tessellate ``cad_like`` into the current part of ``mgr``."""
     if isinstance(cad_like, TopLoc_Location):
         mgr.add_location(Location(cad_like))
 
@@ -62,8 +114,6 @@ def tessellate(
 
     else:
         raise TypeError(f"Unsupported type: {type(cad_like)}: {cad_like}")
-
-    return mgr.build()
 
 
 def _tessellate_face(

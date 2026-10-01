@@ -47,8 +47,16 @@ function defaultModelDisplayState(edgeWidthDefault = 0): ModelDisplayState {
   };
 }
 
+/** Per-part overrides; everything else (opacity, material, clipping, ...) is object-level. */
+export type PartDisplayState = {
+  visible: boolean;
+  /** `#rrggbb` override for the part's face colour, or null to keep the baked colour. */
+  color: string | null;
+};
+
 export type ModelDisplaySettingsContext = {
   getSettings: (modelName: string) => ModelDisplayState;
+  getPartSettings: (modelName: string, partName: string) => PartDisplayState;
   setDefaultEdgeWidth: (w: number) => void;
 };
 
@@ -57,6 +65,9 @@ export const modelDisplaySettingsKey: InjectionKey<ModelDisplaySettingsContext> 
 
 export function createModelDisplaySettingsProvider(): ModelDisplaySettingsContext {
   const byName = new Map<string, ModelDisplayState>();
+  // Keyed by object + part; outlives removal like the object map, so re-adding
+  // an assembly under the same name restores its part visibility and colours.
+  const byPart = new Map<string, PartDisplayState>();
   let defaultEdgeWidth = 0;
 
   function getSettings(modelName: string): ModelDisplayState {
@@ -68,6 +79,16 @@ export function createModelDisplaySettingsProvider(): ModelDisplaySettingsContex
     return state;
   }
 
+  function getPartSettings(modelName: string, partName: string): PartDisplayState {
+    const key = `${modelName}\u0000${partName}`;
+    let state = byPart.get(key);
+    if (!state) {
+      state = reactive({ visible: true, color: null });
+      byPart.set(key, state);
+    }
+    return state;
+  }
+
   function setDefaultEdgeWidth(w: number) {
     defaultEdgeWidth = w;
     for (const state of byName.values()) {
@@ -75,7 +96,7 @@ export function createModelDisplaySettingsProvider(): ModelDisplaySettingsContex
     }
   }
 
-  const ctx = { getSettings, setDefaultEdgeWidth };
+  const ctx = { getSettings, getPartSettings, setDefaultEdgeWidth };
   provide(modelDisplaySettingsKey, ctx);
   return ctx;
 }

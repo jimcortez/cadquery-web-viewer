@@ -11,14 +11,36 @@ import {
 } from "vue";
 import type { Document, Mesh } from "@gltf-transform/core";
 import { extrasNameKey, extrasNameValueHelpers } from "../misc/gltf";
+import { partNameOfMesh, readAssemblyManifest, type AssemblyManifest } from "../misc/assembly";
 
-/** One addressable object in the scene: every mesh sharing a glTF extras name tag. */
+/** One named part of a scene object: every mesh sharing the object's part tag. */
+export type ScenePart = {
+  name: string;
+  meshes: Mesh[];
+  faceCount: number;
+  edgeCount: number;
+  vertexCount: number;
+  /** Colour the tessellator baked into this part (from the manifest), or null. */
+  color: string | null;
+  tags: string[];
+};
+
+/**
+ * One addressable object in the scene: every mesh sharing a glTF extras name tag.
+ *
+ * Every object is an assembly of one or more parts. Geometry without part tags
+ * (plain GLB imports, versions stored before assemblies existed) is a single part
+ * named after the object.
+ */
 export type SceneObject = {
   name: string;
   meshes: Mesh[];
   faceCount: number;
   edgeCount: number;
   vertexCount: number;
+  parts: ScenePart[];
+  tags: string[];
+  manifest: AssemblyManifest | null;
 };
 
 export type SceneObjectsContext = {
@@ -26,8 +48,11 @@ export type SceneObjectsContext = {
   objects: ComputedRef<SceneObject[]>;
   /** Which object the inspector is showing. */
   selectedObjectName: Ref<string | null>;
+  /** Which part of the selected object is focused, or null for the whole assembly. */
+  selectedPartName: Ref<string | null>;
   getObject: (name: string) => SceneObject | undefined;
   select: (name: string | null) => void;
+  selectPart: (objectName: string, partName: string | null) => void;
 };
 
 export const sceneObjectsKey: InjectionKey<SceneObjectsContext> = Symbol("cadquery.sceneObjects");
@@ -64,6 +89,31 @@ function countFeatures(meshes: Mesh[]): Pick<SceneObject, "faceCount" | "edgeCou
   return { faceCount, edgeCount, vertexCount };
 }
 
+/** Split an object's meshes by part tag; manifest order first, then any untagged/extra parts. */
+function groupParts(name: string, meshes: Mesh[], manifest: AssemblyManifest | null): ScenePart[] {
+  const byPart = new Map<string, Mesh[]>();
+  for (const mesh of meshes) {
+    const part = partNameOfMesh(mesh) ?? name;
+    const group = byPart.get(part);
+    if (group) group.push(mesh);
+    else byPart.set(part, [mesh]);
+  }
+  const ordered: string[] = [];
+  for (const p of manifest?.parts ?? []) if (byPart.has(p.name)) ordered.push(p.name);
+  for (const p of byPart.keys()) if (!ordered.includes(p)) ordered.push(p);
+  return ordered.map((partName) => {
+    const partMeshes = byPart.get(partName)!;
+    const entry = manifest?.parts.find((p) => p.name === partName);
+    return {
+      name: partName,
+      meshes: partMeshes,
+      ...countFeatures(partMeshes),
+      color: entry?.color ?? null,
+      tags: entry?.tags ?? [],
+    };
+  });
+}
+
 function groupMeshes(document: Document): SceneObject[] {
   const byName = new Map<string, Mesh[]>();
   for (const mesh of document.getRoot().listMeshes()) {
@@ -73,7 +123,17 @@ function groupMeshes(document: Document): SceneObject[] {
     if (group) group.push(mesh);
     else byName.set(name, [mesh]);
   }
-  return [...byName].map(([name, meshes]) => ({ name, meshes, ...countFeatures(meshes) }));
+  return [...byName].map(([name, meshes]) => {
+    const manifest = readAssemblyManifest(document, name);
+    return {
+      name,
+      meshes,
+      ...countFeatures(meshes),
+      parts: groupParts(name, meshes, manifest),
+      tags: manifest?.tags ?? [],
+      manifest,
+    };
+  });
 }
 
 export function createSceneObjectsProvider(
@@ -81,13 +141,20 @@ export function createSceneObjectsProvider(
 ): SceneObjectsContext {
   const objects = computed(() => groupMeshes(sceneDocument.value));
   const selectedObjectName = ref<string | null>(null);
+  const selectedPartName = ref<string | null>(null);
 
   function getObject(name: string): SceneObject | undefined {
     return objects.value.find((o) => o.name === name);
   }
 
   function select(name: string | null) {
+    if (selectedObjectName.value !== name) selectedPartName.value = null;
     selectedObjectName.value = name;
+  }
+
+  function selectPart(objectName: string, partName: string | null) {
+    selectedObjectName.value = objectName;
+    selectedPartName.value = partName;
   }
 
   // Keep the inspector pointed at something real: select the first object when
@@ -96,13 +163,26 @@ export function createSceneObjectsProvider(
     objects,
     (list) => {
       const current = selectedObjectName.value;
-      if (current !== null && list.some((o) => o.name === current)) return;
+      const obj = current !== null ? list.find((o) => o.name === current) : undefined;
+      if (obj) {
+        const part = selectedPartName.value;
+        if (part !== null && !obj.parts.some((p) => p.name === part)) selectedPartName.value = null;
+        return;
+      }
+      selectedPartName.value = null;
       selectedObjectName.value = list[0]?.name ?? null;
     },
     { immediate: true },
   );
 
-  const ctx: SceneObjectsContext = { objects, selectedObjectName, getObject, select };
+  const ctx: SceneObjectsContext = {
+    objects,
+    selectedObjectName,
+    selectedPartName,
+    getObject,
+    select,
+    selectPart,
+  };
   provide(sceneObjectsKey, ctx);
   return ctx;
 }

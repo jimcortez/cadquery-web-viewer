@@ -8,12 +8,12 @@ import { Matrix4 } from "three/src/math/Matrix4.js";
 import { Plane } from "three/src/math/Plane.js";
 import { Vector3 } from "three/src/math/Vector3.js";
 import { extrasNameKey } from "../misc/gltf";
-import { objectBelongsToModel } from "../misc/modelOwnership";
+import { getOwningPartTag, objectBelongsToModel } from "../misc/modelOwnership";
 import { toLineSegments } from "../misc/lines.js";
 import { currentSceneRotation } from "../viewer/lighting";
 import { isViewerReady } from "../viewer/viewerUtils";
 import type ModelViewerWrapper from "../viewer/ModelViewerWrapper.vue";
-import type { ModelDisplayState } from "./useModelDisplaySettings";
+import type { ModelDisplayState, PartDisplayState } from "./useModelDisplaySettings";
 import type { MObject3D } from "../tools/types";
 
 /** Matches useModelDisplaySettings' default; anything else is a user override. */
@@ -26,6 +26,11 @@ export type ModelFeatureCounts = {
   vertexCount: number;
 };
 
+export type ModelScenePart = {
+  name: string;
+  display: PartDisplayState;
+};
+
 export type ModelSceneEffectsOptions = {
   modelName: string;
   /**
@@ -33,6 +38,10 @@ export type ModelSceneEffectsOptions = {
    * every update, so anything read from it goes stale after the first reload.
    */
   getCounts: () => ModelFeatureCounts;
+  /** Live list of this object's parts with their per-part display state (same rule as getCounts). */
+  getParts?: () => ModelScenePart[];
+  /** Called before a part's vertex colours are rewritten (drop highlights that saved the old colours). */
+  onPartRecolor?: (modelName: string) => void;
   viewer: Ref<InstanceType<typeof ModelViewerWrapper> | null>;
   display: ModelDisplayState;
 };
@@ -60,7 +69,8 @@ type SceneRoot = {
  * time, so this runs in its own effect scope instead — see useModelEffectsManager.
  */
 export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
-  const { modelName, getCounts, viewer, display } = options;
+  const { modelName, getCounts, viewer, display, onPartRecolor } = options;
+  const getParts = options.getParts ?? (() => []);
 
   function sceneParts(): { scene: SceneLike; sceneModel: SceneRoot } | null {
     const scene = viewer.value?.scene as SceneLike | undefined;
@@ -81,6 +91,24 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
     return null;
   }
 
+  function partStateOf(child: MObject3D): PartDisplayState | undefined {
+    const tag = getOwningPartTag(child);
+    if (!tag) return undefined;
+    return getParts().find((p) => p.name === tag)?.display;
+  }
+
+  /** Object visibility AND the owning part's visibility AND the feature toggle for this kind. */
+  function isFeatureVisible(child: MObject3D): boolean {
+    const kind = kindOf(child);
+    if (!kind) return false;
+    const featureIndex = { face: 0, edge: 1, vertex: 2 } as const;
+    return (
+      display.visible &&
+      (partStateOf(child)?.visible ?? true) &&
+      display.enabledFeatures.includes(featureIndex[kind])
+    );
+  }
+
   function prepareMeshMaterial(child: MObject3D) {
     if (!child.material) return;
     if (child.geometry?.attributes?.color) {
@@ -94,23 +122,28 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
   function applyVisibility() {
     const parts = sceneParts();
     if (!parts) return;
-    const featureIndex = { face: 0, edge: 1, vertex: 2 } as const;
     parts.sceneModel.traverse((child) => {
       if (!isMine(child)) return;
-      const kind = kindOf(child);
-      if (!kind) return;
-      const visible = display.visible && display.enabledFeatures.includes(featureIndex[kind]);
-      if (child.visible !== visible) {
+      if (!kindOf(child)) return;
+      const visible = isFeatureVisible(child);
+      // A fat-line replacement stands in for its source line: toggle the
+      // replacement and keep the thin original hidden.
+      const niceLine = child.userData.niceLine as MObject3D | undefined;
+      if (niceLine) {
+        niceLine.visible = visible;
+        child.visible = false;
+      } else if (child.visible !== visible) {
         child.visible = visible;
-        const back = child.userData.backChild as MObject3D | undefined;
-        if (back) back.visible = visible;
       }
+      const back = child.userData.backChild as MObject3D | undefined;
+      if (back && back.visible !== visible) back.visible = visible;
     });
     parts.scene.queueRender();
   }
 
   watch(() => display.enabledFeatures, applyVisibility, { deep: true });
   watch(() => display.visible, applyVisibility);
+  watch(() => getParts().map((p) => p.display.visible), applyVisibility);
 
   // --- opacity / wireframe --------------------------------------------------
 
@@ -274,12 +307,12 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
         line.visible = false;
         line.userData.niceLine = line2;
         line2.userData.noHit = true;
-        line2.visible = display.visible && display.enabledFeatures.includes(1);
+        line2.visible = isFeatureVisible(line);
         fatLines.push(line2);
         edgeWidthCleanup.push(() => {
           line2.parent?.remove(line2);
           delete line.userData.niceLine;
-          line.visible = display.visible && display.enabledFeatures.includes(1);
+          line.visible = isFeatureVisible(line);
         });
       }),
     );
@@ -386,6 +419,68 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
     applyMaterial,
   );
 
+  // --- per-part colour --------------------------------------------------------
+
+  /**
+   * Recolour a part by rewriting the RGB of its face meshes' COLOR_0 attribute.
+   *
+   * Face colours are baked as vertex colours by the tessellator (so face
+   * highlighting can address individual faces), which means a per-part override
+   * has to edit the attribute rather than the material. The original array is
+   * kept once so a null override restores it.
+   */
+  type ColorAttributeLike = {
+    count: number;
+    getX: (i: number) => number;
+    getY: (i: number) => number;
+    getZ: (i: number) => number;
+    setXYZ: (i: number, x: number, y: number, z: number) => unknown;
+    needsUpdate: boolean;
+  };
+
+  function applyPartColors() {
+    const parts = sceneParts();
+    if (!parts) return;
+    // Highlights save the colours they replaced; drop them before rewriting.
+    onPartRecolor?.(modelName);
+    let changed = false;
+    parts.sceneModel.traverse((child) => {
+      if (!isMine(child) || kindOf(child) !== "face" || child.userData.noHit) return;
+      // Accessors, not `.array`: gltf-transform writes interleaved vertex buffers, so the
+      // attribute is usually an InterleavedBufferAttribute whose array holds every lane.
+      const attr = child.geometry?.getAttribute("color") as ColorAttributeLike | undefined;
+      if (!attr) return;
+      const geometry = child.geometry as unknown as { userData: Record<string, unknown> };
+      const override = partStateOf(child)?.color ?? null;
+      const original = geometry.userData.originalColors as Float32Array | undefined;
+      if (override) {
+        if (!original) {
+          const saved = new Float32Array(attr.count * 3);
+          for (let i = 0; i < attr.count; i++) {
+            saved[i * 3] = attr.getX(i);
+            saved[i * 3 + 1] = attr.getY(i);
+            saved[i * 3 + 2] = attr.getZ(i);
+          }
+          geometry.userData.originalColors = saved;
+        }
+        const c = new Color(override);
+        for (let i = 0; i < attr.count; i++) attr.setXYZ(i, c.r, c.g, c.b);
+        attr.needsUpdate = true;
+        changed = true;
+      } else if (original) {
+        for (let i = 0; i < attr.count; i++) {
+          attr.setXYZ(i, original[i * 3], original[i * 3 + 1], original[i * 3 + 2]);
+        }
+        delete geometry.userData.originalColors;
+        attr.needsUpdate = true;
+        changed = true;
+      }
+    });
+    if (changed) parts.scene.queueRender();
+  }
+
+  watch(() => getParts().map((p) => p.display.color), applyPartColors);
+
   // --- load -----------------------------------------------------------------
 
   let setupSceneKey: string | null = null;
@@ -462,6 +557,7 @@ export function useModelSceneEffects(options: ModelSceneEffectsOptions) {
     applyClipPlanes();
     void applyEdgeWidth(display.edgeWidth);
     applyMaterial();
+    applyPartColors();
     if (display.explodeStrength > 0) void nextTick(() => applyExplode(display.explodeStrength));
 
     scene.queueRender();

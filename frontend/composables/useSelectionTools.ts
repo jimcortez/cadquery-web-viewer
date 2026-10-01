@@ -19,7 +19,7 @@ import { Raycaster } from "three/src/core/Raycaster.js";
 import { Vector3 } from "three/src/math/Vector3.js";
 import { AxesColors } from "../misc/helpers";
 import { distances } from "../misc/distances";
-import { getOwningModelTag, type TaggedObject3D } from "../misc/modelOwnership";
+import { getOwningModelTag, getOwningPartTag, type TaggedObject3D } from "../misc/modelOwnership";
 import { SceneMgr } from "../misc/scene";
 import { highlight, highlightUndo, hitToSelectionInfo, type SelectionInfo } from "../tools/selection";
 import type { MObject3D } from "../tools/types";
@@ -73,7 +73,8 @@ export type SelectionToolsOptions = {
    */
   sceneDocument: ShallowRef<Document>;
   setDisableTap: (value: boolean) => void;
-  onFindModel: (name: string) => void;
+  /** Object (and, for assemblies, the part) under the cursor when "find model" is armed. */
+  onFindModel: (name: string, part?: string) => void;
 };
 
 export function createSelectionToolsProvider(
@@ -191,7 +192,8 @@ export function createSelectionToolsProvider(
       updateDistances();
     } else if (hit) {
       const name = getOwningModelTag(hit.object as unknown as TaggedObject3D);
-      if (name) onFindModel(name);
+      const part = getOwningPartTag(hit.object as unknown as TaggedObject3D);
+      if (name) onFindModel(name, part);
       toggleOpenNextSelection();
     }
     scene.queueRender();

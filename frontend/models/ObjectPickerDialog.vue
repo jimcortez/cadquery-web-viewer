@@ -104,6 +104,9 @@ const sampleMenuProps = {
               @update:model-value="(v: boolean | null) => emit('toggleObject', obj, !!v)"
             />
             <span class="cq-dialog__name">{{ obj.name }}</span>
+            <span v-if="(obj.assembly?.parts.length ?? 0) > 1" class="cq-dialog__parts">
+              {{ obj.assembly?.parts.length }} parts
+            </span>
             <v-select
               v-if="allVersions(obj).length > 1"
               :model-value="getRowVersion(obj.name, obj)"
@@ -278,6 +281,14 @@ const sampleMenuProps = {
   font-size: var(--cq-text-body);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cq-dialog__parts {
+  flex: 0 0 auto;
+  font-size: var(--cq-text-label);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.5;
   white-space: nowrap;
 }
 

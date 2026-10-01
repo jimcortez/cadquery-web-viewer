@@ -201,3 +201,45 @@ class TestPatchObject(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestShowPayloadsAndAssemblies(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = CadQueryWebViewer()
+
+    @property
+    def events(self) -> list[dict]:
+        return self.engine.scene_events.buffer()
+
+    def test_show_payloads_created_then_versioned(self) -> None:
+        self.engine.show_payloads([("a", b"glb-1", "h1", {"k": 1})])
+        self.assertEqual({e["type"] for e in self.events}, {SCENE_CLEARED, OBJECT_CREATED})
+        self.assertEqual(self.engine.scene_active_names(), frozenset({"a"}))
+        self.engine.scene_events.clear()
+        self.engine.show_payloads([("a", b"glb-2", "h2", {})], auto_clear=False)
+        self.assertEqual([e["type"] for e in self.events], [OBJECT_VERSIONED])
+        desc = self.engine.describe_object("a")
+        assert desc is not None
+        self.assertEqual(desc["version"], 2)
+        self.assertEqual(desc["kwargs"], {})
+
+    def test_show_assembly_stores_one_object(self) -> None:
+        from build123d import Box
+
+        self.engine.show_assembly([("a", Box(1, 1, 1)), ("b", Box(2, 2, 2))], name="pair")
+        self.assertEqual(self.engine.scene_active_names(), frozenset({"pair"}))
+        desc = self.engine.describe_object("pair")
+        assert desc is not None
+        self.assertEqual([p["name"] for p in desc["assembly"]["parts"]], ["a", "b"])
+        created = [e for e in self.events if e["type"] == OBJECT_CREATED]
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0]["name"], "pair")
+
+    def test_describe_exposes_assembly_manifest(self) -> None:
+        manifest = {"schema": 1, "name": "a", "tags": [], "parts": []}
+        self.engine.put_object_version("a", "h1", b"glb-1", {"assembly": manifest})
+        self.engine.put_object_version("a", "h2", b"glb-2", {})
+        desc = self.engine.describe_object("a")
+        assert desc is not None
+        self.assertIsNone(desc["assembly"])
+        self.assertEqual(desc["versions"][0]["assembly"], manifest)

@@ -383,3 +383,44 @@ class TestCors(_AppTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAssemblyManifestInDescriptor(_AppTestBase):
+    MANIFEST = {
+        "schema": 1,
+        "name": "asm",
+        "tags": ["bevel"],
+        "parts": [{"name": "p0", "index": 0, "color": "#ff0000", "tags": ["body:p0"]}],
+    }
+
+    def _put(self, name: str, marker: int, kwargs: dict) -> None:
+        meta = json.dumps({"hash": f"h-{marker}", "kwargs": kwargs})
+        resp = self.client.put(
+            f"/api/object/{name}",
+            data={
+                "glb": (io.BytesIO(_glb_with_marker(marker)), "m.glb", "model/gltf-binary"),
+                "metadata": meta,
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(resp.status_code, 201)
+
+    def test_manifest_exposed_on_get_and_list(self) -> None:
+        self._put("asm", 1, {"assembly": self.MANIFEST})
+        resp = self.client.get("/api/object/asm", headers={"Accept": "application/json"})
+        body = resp.get_json()
+        assert body is not None
+        self.assertEqual(body["assembly"], self.MANIFEST)
+        self.assertEqual(body["kwargs"]["assembly"], self.MANIFEST)
+        listed = self.client.get("/api/object").get_json()
+        assert listed is not None
+        self.assertEqual(listed["objects"][0]["assembly"], self.MANIFEST)
+
+    def test_versions_carry_their_own_manifest(self) -> None:
+        self._put("asm", 1, {"assembly": self.MANIFEST})
+        self._put("asm", 2, {})
+        body = self.client.get("/api/object/asm", headers={"Accept": "application/json"}).get_json()
+        assert body is not None
+        self.assertIsNone(body["assembly"])
+        self.assertEqual(body["versions"][0]["version"], 1)
+        self.assertEqual(body["versions"][0]["assembly"], self.MANIFEST)
