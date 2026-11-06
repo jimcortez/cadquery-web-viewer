@@ -104,7 +104,7 @@ jobs:
         with:
           path: site
       - id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
       - name: Zip static site for GitHub Release
         run: (cd site && zip -r "$GITHUB_WORKSPACE/cadquery-web-viewer-${{ github.ref_name }}-frontend.zip" .)
       - name: Upload static site to GitHub Release
